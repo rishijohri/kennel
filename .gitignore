@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+
+# Build output / artifacts
+out
+dist
+release
+*.tsbuildinfo
+
+# Local runtime data (Kennel stores API keys, projects, models here — never commit)
+.kennel-local
+
+# Logs
+*.log
+
+# Secrets & signing material — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.cer
+*.cert
+*.key
+*.keystore
+*.mobileprovision
+*.provisionprofile
+secrets.*
+**/credentials.json
+
+# Editor / OS cruft
+.DS_Store
+.claude/
+.vscode/
+.idea/
+Thumbs.db

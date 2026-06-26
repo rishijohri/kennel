@@ -1,0 +1,38 @@
+appId: dev.kennel.app
+productName: Kennel
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+# The llama.cpp engine is NOT bundled — it is downloaded at runtime from GitHub
+# into userData (see services/llama-manager.ts) and ad-hoc-signed there. This
+# keeps the notarized app small and free of third-party binaries (no per-arch
+# merge hack, no library-validation carve-out needed for bundled binaries).
+mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  # Required for notarization. Hardened runtime + our entitlements (Electron/V8).
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarize using credentials from the environment (APPLE_ID +
+  # APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID, or an App Store Connect API key).
+  # Pass -c.mac.notarize=false for a quick signed-only build with no Apple round-trip.
+  notarize: true
+  target:
+    - target: dmg
+      arch: universal
+    - target: zip
+      arch: universal
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+linux:
+  icon: build/icon.png
+  target:
+    - AppImage
+  category: Development

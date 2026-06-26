@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Electron's V8 needs writable/executable memory under hardened runtime. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- The llama.cpp engine is no longer bundled — it runs as a SEPARATE process,
+       downloaded at runtime and ad-hoc-signed there, so it carries its own
+       signature context and does not depend on these app entitlements. They are
+       retained as a harmless margin for any native module loaded into the app
+       process (llama-server is launched with DYLD_* hints for its sibling dylibs);
+       trim once an audit confirms they're unused. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

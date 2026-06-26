@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: theme('colors.base');
+  color: theme('colors.ink.DEFAULT');
+  font-family: theme('fontFamily.sans');
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Ambient background glow behind the app */
+#root {
+  position: relative;
+  background:
+    radial-gradient(1200px 600px at 75% -10%, rgba(124, 108, 255, 0.1), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(79, 214, 168, 0.06), transparent 55%),
+    theme('colors.base');
+}
+
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass {
+    background: linear-gradient(180deg, rgba(22, 25, 34, 0.92), rgba(16, 18, 24, 0.92));
+    backdrop-filter: blur(18px);
+  }
+  /* Strong frosted full-screen scrim — the canvas behind is only faintly felt. */
+  .frost-scrim {
+    background: radial-gradient(130% 120% at 50% 0%, rgba(18, 20, 30, 0.42), rgba(5, 6, 10, 0.74));
+    backdrop-filter: blur(46px) saturate(118%);
+    -webkit-backdrop-filter: blur(46px) saturate(118%);
+  }
+}
+
+/* ── Breathing hue aura behind the prompt box ─────────────────────
+   Soft, slowly-pulsing multi-hue glow (Gemini-style). Tinted per agent
+   via --aura-1/2/3 inline vars. Three independent timelines: a one-shot
+   fade-in, a gentle breathe (scale + opacity), and a slow hue drift. */
+.prompt-aura {
+  position: absolute;
+  z-index: 0;
+  inset: -150% -34% -180% -34%;
+  pointer-events: none;
+  border-radius: 9999px;
+  background:
+    radial-gradient(38% 58% at 28% 44%, var(--aura-1, rgba(124, 108, 255, 0.55)), transparent 72%),
+    radial-gradient(42% 56% at 72% 56%, var(--aura-2, rgba(79, 214, 168, 0.42)), transparent 72%),
+    radial-gradient(58% 60% at 50% 64%, var(--aura-3, rgba(86, 182, 255, 0.4)), transparent 76%);
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  animation:
+    aura-in 0.9s ease-out forwards,
+    aura-breathe 7.5s ease-in-out 0.9s infinite,
+    aura-drift 16s linear infinite;
+}
+.prompt-aura.is-compact {
+  inset: -90% -20% -120% -20%;
+}
+@keyframes aura-in {
+  to {
+    opacity: 0.62;
+  }
+}
+@keyframes aura-breathe {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.56;
+  }
+  50% {
+    transform: scale(1.13) translateY(-1.5%);
+    opacity: 0.9;
+  }
+}
+@keyframes aura-drift {
+  0% {
+    filter: blur(56px) hue-rotate(0deg);
+  }
+  100% {
+    filter: blur(56px) hue-rotate(34deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt-aura {
+    animation: aura-in 0.9s ease-out forwards;
+  }
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 108, 255, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 108, 255, 0.32);
+  background-clip: padding-box;
+}
+
+/* ── React Flow theming ───────────────────────────────────────── */
+.react-flow {
+  background: transparent;
+}
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__edge-path {
+  stroke: rgba(124, 108, 255, 0.45);
+  stroke-width: 1.75;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: rgba(154, 141, 255, 0.95);
+}
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 5;
+  animation: dashdraw 0.6s linear infinite;
+}
+@keyframes dashdraw {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: theme('colors.iris.DEFAULT');
+  border: 2px solid theme('colors.surface.raised');
+  opacity: 0.9;
+}
+.react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: theme('boxShadow.node');
+  border: 1px solid theme('colors.line.DEFAULT');
+}
+.react-flow__controls-button {
+  background: theme('colors.surface.raised');
+  border-bottom: 1px solid theme('colors.line.DEFAULT');
+  color: theme('colors.ink.soft');
+  width: 30px;
+  height: 30px;
+}
+.react-flow__controls-button:hover {
+  background: theme('colors.surface.hover');
+  color: theme('colors.ink.DEFAULT');
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+.selectable {
+  user-select: text;
+}
+
+textarea {
+  resize: none;
+}
+
+::selection {
+  background: rgba(124, 108, 255, 0.35);
+}
