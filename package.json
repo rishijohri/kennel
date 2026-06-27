@@ -1,6 +1,6 @@
 {
   "name": "kennel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kennel — a node-based IDE for agentic development. Each canvas node is a real, git-versioned state of your codebase.",
   "author": "Kennel",
   "license": "MIT",
