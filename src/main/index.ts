@@ -7,6 +7,7 @@ import { stopServer } from './services/local-llm'
 import { startScheduler, stopScheduler } from './services/scheduler'
 import { disconnectMcp } from './services/mcp'
 import { stopWakeMode } from './services/wake'
+import { initUpdater, stopUpdater } from './services/updater'
 
 // The macOS application menu's bold first item is taken from app.name, which
 // otherwise defaults to package.json's lowercase "kennel". Set it before the app
@@ -61,6 +62,8 @@ app.whenReady().then(() => {
   registerIpc()
   createWindow()
   startScheduler()
+  // Check GitHub Releases for a newer version (packaged/signed builds only).
+  initUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -74,6 +77,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   stopScheduler()
   stopWakeMode()
+  stopUpdater()
   void stopServer()
   void disconnectMcp()
 })

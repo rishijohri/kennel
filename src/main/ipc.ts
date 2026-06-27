@@ -58,6 +58,12 @@ import {
 import { downloadModel, listFiles, listModels } from './services/hf-models'
 import type { HfModelFile } from '@shared/types'
 import { isWakeMode, setWakeMode } from './services/wake'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdateState,
+  quitAndInstall
+} from './services/updater'
 import type {
   CaretakerConfig,
   CreateWorkflowNodeInput,
@@ -713,4 +719,12 @@ export function registerIpc(): void {
   // Wake Mode — prevent the device from sleeping while working.
   ipcMain.handle('kennel:setWakeMode', (_e, enabled: boolean) => setWakeMode(enabled))
   ipcMain.handle('kennel:getWakeMode', () => isWakeMode())
+
+  // App auto-update (GitHub Releases via electron-updater).
+  ipcMain.handle('kennel:getUpdateState', () => getUpdateState())
+  ipcMain.handle('kennel:checkForUpdates', () => checkForUpdates())
+  ipcMain.handle('kennel:downloadUpdate', (_e, restartWhenReady: boolean) =>
+    downloadUpdate(restartWhenReady)
+  )
+  ipcMain.handle('kennel:quitAndInstall', () => quitAndInstall())
 }

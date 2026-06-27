@@ -808,6 +808,36 @@ export interface HfModelFile {
   url: string
 }
 
+/** A release available via the GitHub auto-updater (subset of electron-updater's UpdateInfo). */
+export interface UpdateInfo {
+  version: string
+  releaseName?: string
+  releaseNotes?: string
+  releaseDate?: string
+}
+
+/**
+ * Current state of the GitHub auto-updater, mirrored from the main process on
+ * every change. `phase` drives the title-bar Update pill and the update popup.
+ * Auto-update only runs in the packaged, signed app — in dev it stays
+ * `{ phase: 'idle', supported: false }` and no UI is shown.
+ */
+export interface UpdateState {
+  phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
+  /** The available/downloaded release (present from 'available' onward). */
+  info?: UpdateInfo
+  /** 0–100 while downloading. */
+  percent?: number
+  /** Bytes/sec while downloading (optional rate readout). */
+  bytesPerSecond?: number
+  /** Last error message (phase 'error'). */
+  error?: string
+  /** True once the user asked to install & relaunch as soon as the download finishes. */
+  restartWhenReady?: boolean
+  /** False in dev / unsigned builds where the updater can't run. */
+  supported: boolean
+}
+
 /** Streamed progress for a llama-engine or model download. */
 export interface DownloadProgress {
   /** Stable id for the download (tag for engines, repo/file for models). */
@@ -994,6 +1024,16 @@ export interface KennelApi {
   /** Current Wake Mode state (it's process-global, transient, defaults off). */
   getWakeMode(): Promise<boolean>
 
+  // App auto-update (GitHub Releases via electron-updater; packaged builds only).
+  /** Current updater state — safe anytime; returns { phase:'idle', supported:false } in dev. */
+  getUpdateState(): Promise<UpdateState>
+  /** Re-check GitHub Releases for a newer version. */
+  checkForUpdates(): Promise<UpdateState>
+  /** Start downloading the available update. `restartWhenReady` installs + relaunches once done. */
+  downloadUpdate(restartWhenReady: boolean): Promise<void>
+  /** Quit and install a downloaded update (relaunches into the new version). */
+  quitAndInstall(): Promise<void>
+
   // Streaming
   onRunEvent(cb: (e: RunEvent) => void): () => void
   onStateChanged(cb: (s: KennelState) => void): () => void
@@ -1002,6 +1042,8 @@ export interface KennelApi {
   onWalkerEvent(cb: (e: WalkerEvent) => void): () => void
   /** Progress of in-flight engine/model downloads. */
   onDownloadProgress(cb: (p: DownloadProgress) => void): () => void
+  /** Auto-updater state changes (checking / available / progress / downloaded / error). */
+  onUpdateEvent(cb: (s: UpdateState) => void): () => void
 }
 
 declare global {

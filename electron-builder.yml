@@ -1,5 +1,15 @@
 appId: dev.kennel.app
 productName: Kennel
+# GitHub Releases is the auto-update feed. This embeds `app-update.yml` (owner/repo)
+# into the packaged app so electron-updater knows where to look, and lets
+# `electron-builder --publish` upload the update metadata (latest-mac.yml) + the
+# .zip the updater pulls. `releaseType: draft` keeps a release private until you
+# review and publish it (electron-updater ignores drafts).
+publish:
+  provider: github
+  owner: rishijohri
+  repo: kennel
+  releaseType: draft
 directories:
   output: release
   buildResources: build

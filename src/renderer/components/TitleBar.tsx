@@ -8,10 +8,13 @@ import {
   FolderOpen,
   House,
   Trash2,
-  Coffee
+  Coffee,
+  Download,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react'
 import { useKennel } from '../store/useKennel'
-import { IconButton } from './ui'
+import { IconButton, Spinner } from './ui'
 import { appIcon } from '../assets/icons'
 
 export function TitleBar() {
@@ -47,12 +50,88 @@ export function TitleBar() {
       )}
 
       <div className="no-drag ml-auto flex items-center gap-1">
+        <UpdatePill />
         <WakeToggle />
         <IconButton onClick={() => openSettings('providers')} aria-label="Settings">
           <Settings size={16} />
         </IconButton>
       </div>
     </header>
+  )
+}
+
+/**
+ * Update pill — appears in the top-right only when a GitHub release update is in
+ * play (packaged builds only). 'available' opens the popup; 'downloading' shows
+ * live progress; 'downloaded' is THE Update button that restarts into the new
+ * version; 'error' reopens the dialog. Hidden entirely in dev (supported=false).
+ */
+function UpdatePill() {
+  const update = useKennel((s) => s.updateState)
+  const openUpdateModal = useKennel((s) => s.openUpdateModal)
+  const applyUpdate = useKennel((s) => s.applyUpdate)
+
+  const { supported, phase, percent } = update
+  if (!supported || phase === 'idle' || phase === 'checking') return null
+
+  const base =
+    'no-drag inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95'
+
+  if (phase === 'available') {
+    return (
+      <button
+        onClick={openUpdateModal}
+        title="A new version of Kennel is available"
+        className={clsx(
+          base,
+          'bg-amber/15 text-amber ring-1 ring-amber/40 shadow-[0_0_14px_-3px_rgba(255,180,84,0.7)] hover:bg-amber/25'
+        )}
+      >
+        <Download size={14} />
+        Update
+      </button>
+    )
+  }
+
+  if (phase === 'downloading') {
+    return (
+      <button
+        onClick={openUpdateModal}
+        title="Downloading the update…"
+        className={clsx(base, 'bg-surface-overlay text-ink-soft ring-1 ring-line hover:text-ink')}
+      >
+        <Spinner size={12} />
+        {percent ?? 0}%
+      </button>
+    )
+  }
+
+  if (phase === 'downloaded') {
+    return (
+      <button
+        onClick={() => void applyUpdate()}
+        title="Restart Kennel to finish installing the update"
+        className={clsx(
+          base,
+          'bg-mint/15 text-mint ring-1 ring-mint/40 shadow-[0_0_14px_-3px_rgba(79,214,168,0.7)] hover:bg-mint/25'
+        )}
+      >
+        <RefreshCw size={14} />
+        Restart to update
+      </button>
+    )
+  }
+
+  // phase === 'error'
+  return (
+    <button
+      onClick={openUpdateModal}
+      title="The update ran into a problem — click for details"
+      className={clsx(base, 'bg-rose/12 text-rose ring-1 ring-rose/30 hover:bg-rose/20')}
+    >
+      <AlertTriangle size={14} />
+      Update failed
+    </button>
   )
 }
 

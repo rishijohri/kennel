@@ -5,6 +5,7 @@ import type {
   KennelState,
   LocalServerStatus,
   RunEvent,
+  UpdateState,
   WalkerEvent
 } from '@shared/types'
 
@@ -42,4 +43,8 @@ export function sendWalkerEvent(e: WalkerEvent): void {
 
 export function sendDownloadProgress(p: DownloadProgress): void {
   send('kennel:download-progress', p)
+}
+
+export function sendUpdateEvent(s: UpdateState): void {
+  send('kennel:update-event', s)
 }
