@@ -9,6 +9,7 @@ import { NodeInspector } from './components/inspector/NodeInspector'
 import { RunLauncher } from './components/RunLauncher'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { LocalSetupModal } from './components/settings/LocalSetupModal'
+import { UpdateModal } from './components/UpdateModal'
 import { CaretakerPanel } from './components/CaretakerPanel'
 import { WalkerPanel } from './components/WalkerPanel'
 import { Toasts } from './components/Toasts'
@@ -55,6 +56,7 @@ export default function App() {
       <RunLauncher />
       <SettingsModal />
       <LocalSetupModal />
+      <UpdateModal />
       <CaretakerPanel />
       <WalkerPanel />
       <Toasts />

@@ -16,6 +16,7 @@ import type {
   RunProcessInput,
   SaveProviderInput,
   KennelState,
+  UpdateState,
   WalkerAutonomy,
   WalkerConfig,
   WalkerEvent
@@ -139,6 +140,12 @@ const api: KennelApi = {
   setWakeMode: (enabled: boolean) => ipcRenderer.invoke('kennel:setWakeMode', enabled),
   getWakeMode: () => ipcRenderer.invoke('kennel:getWakeMode'),
 
+  getUpdateState: () => ipcRenderer.invoke('kennel:getUpdateState'),
+  checkForUpdates: () => ipcRenderer.invoke('kennel:checkForUpdates'),
+  downloadUpdate: (restartWhenReady: boolean) =>
+    ipcRenderer.invoke('kennel:downloadUpdate', restartWhenReady),
+  quitAndInstall: () => ipcRenderer.invoke('kennel:quitAndInstall'),
+
   onRunEvent: (cb: (e: RunEvent) => void) => {
     const listener = (_: unknown, e: RunEvent) => cb(e)
     ipcRenderer.on('kennel:run-event', listener)
@@ -168,6 +175,11 @@ const api: KennelApi = {
     const listener = (_: unknown, p: DownloadProgress) => cb(p)
     ipcRenderer.on('kennel:download-progress', listener)
     return () => ipcRenderer.removeListener('kennel:download-progress', listener)
+  },
+  onUpdateEvent: (cb: (s: UpdateState) => void) => {
+    const listener = (_: unknown, s: UpdateState) => cb(s)
+    ipcRenderer.on('kennel:update-event', listener)
+    return () => ipcRenderer.removeListener('kennel:update-event', listener)
   }
 }
 

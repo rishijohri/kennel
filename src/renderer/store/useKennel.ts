@@ -14,6 +14,7 @@ import type {
   ParkKind,
   RunEvent,
   SaveProviderInput,
+  UpdateState,
   WalkerAutonomy,
   WalkerConfig,
   WalkerEvent,
@@ -130,6 +131,23 @@ interface KennelStore {
   /** First-run (skippable) local-LLM setup modal. */
   localSetupOpen: boolean
 
+  /** GitHub auto-update state (mirrored from main; idle/unsupported in dev). */
+  updateState: UpdateState
+  /** The update popup (auto-opens once when a new version first appears). */
+  updateModalOpen: boolean
+  /** Version we've already auto-prompted for, so we don't re-pop the dialog (persisted). */
+  updatePromptedVersion: string | null
+  /** Fold a pushed/fetched updater state into the store (+ persist new prompts). */
+  ingestUpdateState: (s: UpdateState) => void
+  openUpdateModal: () => void
+  closeUpdateModal: () => void
+  /** Begin downloading the update. `restartWhenReady` installs + relaunches when done. */
+  startUpdate: (restartWhenReady: boolean) => Promise<void>
+  /** Quit and install a downloaded update. */
+  applyUpdate: () => Promise<void>
+  /** Manually re-check GitHub for a newer version. */
+  checkForUpdates: () => Promise<void>
+
   loadLlamaEngines: () => Promise<void>
   downloadLlama: (tag: string) => Promise<void>
   setActiveLlama: (tag: string) => Promise<void>
@@ -237,6 +255,31 @@ interface KennelStore {
   nodeById: (id: string) => CanvasNode | undefined
 }
 
+/** Persisted across restarts so a dismissed update doesn't re-pop the dialog every launch. */
+const UPDATE_PROMPTED_KEY = 'kennel.updatePromptedVersion'
+function readPromptedVersion(): string | null {
+  try {
+    return window.localStorage.getItem(UPDATE_PROMPTED_KEY)
+  } catch {
+    return null
+  }
+}
+
+/** Fold an updater state into the store, auto-opening the popup the first time a
+ *  given new version becomes available (but never re-popping it after dismissal). */
+function foldUpdate(
+  st: { updateModalOpen: boolean; updatePromptedVersion: string | null },
+  s: UpdateState
+): { updateState: UpdateState; updateModalOpen: boolean; updatePromptedVersion: string | null } {
+  const v = s.info?.version ?? null
+  const firstPrompt = s.phase === 'available' && v !== null && st.updatePromptedVersion !== v
+  return {
+    updateState: s,
+    updateModalOpen: firstPrompt ? true : st.updateModalOpen,
+    updatePromptedVersion: firstPrompt ? v : st.updatePromptedVersion
+  }
+}
+
 /** Rebind agent-chat selection to a (newly) active project's conversations. */
 function resetAgentChats(s: KennelState) {
   const walkerChat = s.walkerChats[0] ?? null
@@ -284,6 +327,51 @@ export const useKennel = create<KennelStore>((set, get) => ({
   llamaEngines: null,
   downloads: {},
   localSetupOpen: false,
+  updateState: { phase: 'idle', supported: false },
+  updateModalOpen: false,
+  updatePromptedVersion: readPromptedVersion(),
+
+  // Fold an updater state in; persist a newly-prompted version so a "Later"-dismissed
+  // update doesn't force the dialog open again on the next launch.
+  ingestUpdateState: (s) => {
+    const st = get()
+    const next = foldUpdate(st, s)
+    if (next.updatePromptedVersion && next.updatePromptedVersion !== st.updatePromptedVersion) {
+      try {
+        window.localStorage.setItem(UPDATE_PROMPTED_KEY, next.updatePromptedVersion)
+      } catch {
+        /* private mode / quota — non-fatal */
+      }
+    }
+    set(next)
+  },
+  openUpdateModal: () => set({ updateModalOpen: true }),
+  closeUpdateModal: () => set({ updateModalOpen: false }),
+  startUpdate: async (restartWhenReady) => {
+    // Background download closes the dialog and surfaces the title-bar pill;
+    // "Update now" (restartWhenReady) keeps the dialog open to show progress
+    // before the app relaunches itself.
+    if (!restartWhenReady) set({ updateModalOpen: false })
+    try {
+      await window.kennel.downloadUpdate(restartWhenReady)
+    } catch (e: any) {
+      get().pushToast('error', e?.message ?? 'Update download failed')
+    }
+  },
+  applyUpdate: async () => {
+    try {
+      await window.kennel.quitAndInstall()
+    } catch (e: any) {
+      get().pushToast('error', e?.message ?? 'Could not install the update')
+    }
+  },
+  checkForUpdates: async () => {
+    try {
+      get().ingestUpdateState(await window.kennel.checkForUpdates())
+    } catch {
+      /* surfaced via the update event */
+    }
+  },
 
   loadLlamaEngines: async () => {
     try {
@@ -350,6 +438,7 @@ export const useKennel = create<KennelStore>((set, get) => ({
           return { downloads }
         })
       )
+      window.kennel.onUpdateEvent((s) => get().ingestUpdateState(s))
       window.addEventListener('unhandledrejection', (ev) => {
         const msg = (ev.reason && (ev.reason.message ?? String(ev.reason))) || 'Unexpected error'
         get().pushToast('error', String(msg).replace(/^Error:\s*/, ''))
@@ -375,6 +464,8 @@ export const useKennel = create<KennelStore>((set, get) => ({
     if (s.project) set({ selectedNodeId: s.project.activeNodeId })
     set({ walkerAutonomy: walkerChat?.autonomy ?? s.walker?.autonomy ?? 'medium' })
     void window.kennel.getLocalStatus().then((ls) => set({ localStatus: ls }))
+    // Sync any update state the main process already learned before we subscribed.
+    void window.kennel.getUpdateState().then((u) => get().ingestUpdateState(u))
     // Load installed engines; on a fresh machine with none installed, prompt the
     // (skippable) first-run local-LLM setup unless it's already been dismissed.
     void (async () => {
