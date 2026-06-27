@@ -24,34 +24,38 @@ npm run release -- major       # 0.1.0 → 1.0.0
 npm run release -- 1.4.2       # explicit version
 ```
 
-That single command ([`build/release.sh`](build/release.sh)) does everything, in order:
+Run it from a **clean, up-to-date `main`** (merge feature PRs first, then release). That single
+command ([`build/release.sh`](build/release.sh)) does everything, in order:
 
 1. **Bumps the version** in `package.json` (the only source of truth — `app.getVersion()`
    and the MCP client id read from it at runtime).
-2. **Builds + publishes** the universal **dmg + zip**, generates **`latest-mac.yml`** +
-   blockmaps, and uploads them to a **draft** GitHub release tagged `v<version>`. The `.app`
-   inside both archives is signed + notarized here (`notarize: true`). *(= `npm run release:dist`.)*
-3. **Signs + notarizes + staples the dmg container** (electron-builder leaves it unsigned) and
-   replaces the placeholder dmg on the release with the signed one.
+2. **Commits the bump, tags `v<version>`, and pushes branch + tag first.** Doing this *before*
+   the GitHub release exists is deliberate: promoting a release auto-creates its tag at the
+   wrong commit otherwise (and collides with a tag pushed afterwards).
+3. **Builds + publishes** the signed/notarized universal **dmg + zip**, generates
+   **`latest-mac.yml`**, and uploads them to a **draft** GitHub release for the tag, then
+   signs + staples the dmg container and replaces the placeholder. *(= `npm run release:dist`.)*
 4. **Promotes the release** out of draft and marks it `latest`, so the auto-updater and the
-   website's `/releases/latest/download/` links resolve.
+   website's `/releases/latest/download/` links resolve. (The tag already exists → no conflict.)
 5. **Updates the website** — rewrites the `Kennel-<version>-universal.dmg` download links in
    [`../kennel-website`](../kennel-website), commits + pushes, and redeploys to Vercel
    (`vercel --prod`).
-6. **Commits the version bump, tags `v<version>`, and pushes** the app repo.
 
 ### Knobs
 
 | Env var | Effect |
 | --- | --- |
-| `RELEASE_KEEP_DRAFT=1` | Stop after step 3 (leave the GitHub release a draft for manual review). Skips promote, website, and push. |
+| `RELEASE_KEEP_DRAFT=1` | Build + upload to a **draft** only; commit + tag stay **local** (not pushed). No promote, no website. For manual review. |
 | `RELEASE_SKIP_WEBSITE=1` | Do the full app release but don't touch the website. |
+| `RELEASE_ALLOW_BRANCH=1` | Skip the "must be on a clean, up-to-date default branch" guard. |
 | `KENNEL_WEBSITE_DIR=<path>` | Point at the website repo if it isn't `../kennel-website`. |
 
 > **Review gate.** electron-updater ignores draft/pre-release releases, so step 4 is what makes
-> an update live. If you want to eyeball the assets first, run with `RELEASE_KEEP_DRAFT=1`, inspect
-> the draft on GitHub, then finish with `gh release edit v<version> --draft=false --latest` (and
-> re-run the website + push steps yourself, or just `npm run release` from the now-clean tree).
+> an update live. To eyeball the assets first, run `RELEASE_KEEP_DRAFT=1 npm run release`, inspect
+> the draft on GitHub, then finish with:
+> ```bash
+> gh release edit v<version> --draft=false --latest && git push && git push origin v<version>
+> ```
 
 ### Recovery
 
