@@ -17,7 +17,7 @@
     "dist:dir": "electron-vite build && electron-builder --dir",
     "dist:mac": "npm run dist && bash build/sign-dmg.sh",
     "release": "bash build/release.sh",
-    "release:dist": "electron-vite build && electron-builder --publish always && bash build/sign-dmg.sh && gh release upload \"v$npm_package_version\" release/*.dmg --clobber"
+    "release:dist": "electron-vite build && electron-builder --publish always && bash build/sign-dmg.sh && gh release upload \"v$npm_package_version\" \"release/Kennel-$npm_package_version-universal.dmg\" --clobber"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
