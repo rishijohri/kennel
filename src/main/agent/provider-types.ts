@@ -1,4 +1,4 @@
-import type { Effort } from '@shared/types'
+import type { Effort, Permissions } from '@shared/types'
 import type { ToolDef } from './tools'
 
 export type AgentStreamEvent =
@@ -38,6 +38,29 @@ export interface AgentRunOptions {
   location?: string
   /** Override the default model↔tool round-trip cap (e.g. the Walker orchestrator). */
   maxIterations?: number
+  /**
+   * Working directory the agent operates in. The chat-completion providers ignore
+   * this (their file ops go through `execute`/ToolContext), but external-CLI
+   * providers like Copilot run their OWN agentic loop directly in this directory.
+   */
+  cwd?: string
+  /**
+   * The persona's permissions, mapped to an external-engine provider's own tool
+   * gating (e.g. Copilot's excludedTools / onPreToolUse). The chat-completion
+   * providers gate via the injected `tools`/`execute` instead and ignore this.
+   */
+  permissions?: Permissions
+  /**
+   * Copilot only. When true (Walker / Care Taker), the injected Kennel `tools`
+   * are exposed to Copilot as custom SDK tools (orchestration mode) and Copilot's
+   * native coding tools are disabled. When false/omitted (canvas + Park steps),
+   * Copilot uses its OWN native coding tools and `tools`/`execute` are ignored.
+   */
+  exposeKennelTools?: boolean
+  /** Copilot only: tool names to allow-list (availableTools). Empty/undefined = all. */
+  copilotAllow?: string[]
+  /** Copilot only: tool names to deny (excludedTools; always wins). */
+  copilotDeny?: string[]
 }
 
 export interface AgentRunResult {

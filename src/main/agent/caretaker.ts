@@ -711,7 +711,9 @@ export async function runCaretakerTurn(opts: {
   const apiKey = store.getApiKey(config.providerId) ?? ''
   const vertexAdc =
     provider.kind === 'google-vertex' && Boolean(provider.project) && Boolean(provider.location)
-  if (!(provider.kind === 'openai-compatible' || vertexAdc) && !apiKey) {
+  // Copilot is keyless (its own OAuth, checked at run time via assertCopilotReady).
+  const keyless = provider.kind === 'openai-compatible' || provider.kind === 'copilot' || vertexAdc
+  if (!keyless && !apiKey) {
     throw new Error(`No API key set for provider "${provider.name}".`)
   }
 
@@ -766,7 +768,11 @@ export async function runCaretakerTurn(opts: {
       signal: opts.signal,
       vertex: provider.kind === 'google-vertex',
       project: provider.project,
-      location: provider.location
+      location: provider.location,
+      // Copilot: expose the Care Taker's tools as custom SDK tools; native coding
+      // tools stay disabled (it manages capabilities, doesn't edit the tree).
+      cwd: project?.path ?? process.cwd(),
+      exposeKennelTools: true
     })
     return result.finalText
   } finally {

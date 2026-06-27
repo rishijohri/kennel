@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import {
   Plus,
@@ -11,9 +11,15 @@ import {
   Loader2,
   Users,
   AlertTriangle,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Github,
+  Terminal,
+  Download,
+  LogIn,
+  RefreshCw,
+  X
 } from 'lucide-react'
-import type { AgentPersona, ProviderConfig, ProviderKind } from '@shared/types'
+import type { AgentPersona, CopilotStatus, ProviderConfig, ProviderKind } from '@shared/types'
 import { useKennel } from '../../store/useKennel'
 import { Button, Label, Select, TextInput, Modal, ModalHeader } from '../ui'
 
@@ -34,7 +40,9 @@ const KIND_LABEL: Record<ProviderKind, string> = {
   openai: 'OpenAI',
   'openai-compatible': 'OpenAI-compatible (local / hosted)',
   google: 'Google AI Studio (Gemini)',
-  'google-vertex': 'Google Vertex AI'
+  'google-vertex': 'Google Vertex AI',
+  huggingface: 'Hugging Face Inference',
+  copilot: 'GitHub Copilot CLI'
 }
 
 export function ProvidersPanel() {
@@ -126,7 +134,9 @@ export function ProvidersPanel() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-ink">{p.name}</span>
-                  {p.hasKey ? (
+                  {p.kind === 'copilot' ? (
+                    <CopilotCardBadge />
+                  ) : p.hasKey ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-mint/12 px-2 py-0.5 text-[10px] text-mint">
                       <KeyRound size={10} /> key set
                     </span>
@@ -388,6 +398,7 @@ function ProviderForm({
   const [saving, setSaving] = useState(false)
 
   const isVertex = kind === 'google-vertex'
+  const isCopilot = kind === 'copilot'
 
   const onKindChange = (k: ProviderKind) => {
     setKind(k)
@@ -421,10 +432,12 @@ function ProviderForm({
     setSaving(false)
     // Best-effort: fetch the model list now so the dropdowns are populated and a
     // default is chosen automatically — no need to type a model id anywhere.
+    // Copilot is keyless: its model list comes from the CLI, so always probe.
     const hasCreds =
       Boolean(apiKey) ||
       Boolean(initial?.hasKey) ||
       kind === 'openai-compatible' ||
+      isCopilot ||
       (isVertex && project.trim().length > 0 && location.trim().length > 0)
     if (hasCreds) void window.kennel.testProvider(id).catch(() => {})
     onDone()
@@ -453,6 +466,8 @@ function ProviderForm({
           <option value="openai">{KIND_LABEL.openai}</option>
           <option value="google">{KIND_LABEL.google}</option>
           <option value="google-vertex">{KIND_LABEL['google-vertex']}</option>
+          <option value="huggingface">{KIND_LABEL.huggingface}</option>
+          <option value="copilot">{KIND_LABEL.copilot}</option>
           <option value="openai-compatible">{KIND_LABEL['openai-compatible']}</option>
         </Select>
       </div>
@@ -478,6 +493,18 @@ function ProviderForm({
           <span className="text-iris-soft">aistudio.google.com/apikey</span>.
         </p>
       )}
+
+      {kind === 'huggingface' && (
+        <p className="rounded-xl border border-line bg-surface/60 px-3 py-2 text-[11px] leading-relaxed text-ink-faint">
+          One <span className="font-mono text-ink-soft">hf_…</span> token reaches every model on the
+          HF router (Cerebras, Groq, Together, SambaNova, Fireworks, …). Create a fine-grained token
+          with <span className="text-iris-soft">“Make calls to Inference Providers”</span> at{' '}
+          <span className="text-iris-soft">huggingface.co/settings/tokens</span>. Models like{' '}
+          <span className="font-mono text-ink-soft">openai/gpt-oss-120b</span> are fetched on save.
+        </p>
+      )}
+
+      {isCopilot && <CopilotSetup />}
 
       {isVertex && (
         <div className="grid grid-cols-2 gap-3">
@@ -506,26 +533,28 @@ function ProviderForm({
         </div>
       )}
 
-      <div>
-        <Label>
-          API key{' '}
-          {(kind === 'openai-compatible' || isVertex) && (
-            <span className="lowercase">(optional)</span>
-          )}
-        </Label>
-        <TextInput
-          type="password"
-          placeholder={initial?.hasKey ? '•••••••• stored — leave blank to keep' : 'sk-…'}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          className="font-mono text-[13px]"
-        />
-      </div>
+      {!isCopilot && (
+        <div>
+          <Label>
+            API key{' '}
+            {(kind === 'openai-compatible' || isVertex) && (
+              <span className="lowercase">(optional)</span>
+            )}
+          </Label>
+          <TextInput
+            type="password"
+            placeholder={initial?.hasKey ? '•••••••• stored — leave blank to keep' : 'sk-…'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="font-mono text-[13px]"
+          />
+        </div>
+      )}
 
       <p className="rounded-xl border border-line bg-surface/40 px-3 py-2 text-[11px] text-ink-faint">
-        On save, Kennel fetches the available models from this provider and picks the first as the
-        default — no model id to type. You can change the default from the provider card, and pick a
-        model per persona / agent from a dropdown.
+        {isCopilot
+          ? 'No API key — Copilot authenticates through its own GitHub sign-in above. On save, Kennel loads the models the CLI offers and picks one as the default; choose a model per persona from a dropdown.'
+          : 'On save, Kennel fetches the available models from this provider and picks the first as the default — no model id to type. You can change the default from the provider card, and pick a model per persona / agent from a dropdown.'}
       </p>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -731,5 +760,183 @@ function ScopeCard({
       <span className={clsx('text-xs font-medium', active ? 'text-ink' : 'text-ink-soft')}>{title}</span>
       <span className="text-[10px] text-ink-faint">{hint}</span>
     </button>
+  )
+}
+
+// ── GitHub Copilot CLI setup (keyless `copilot` provider) ────────────────────
+
+/** Compact CLI status chip shown on a Copilot provider card. */
+function CopilotCardBadge() {
+  const [status, setStatus] = useState<CopilotStatus | null>(null)
+  useEffect(() => {
+    let alive = true
+    window.kennel.getCopilotStatus().then((s) => alive && setStatus(s))
+    return () => {
+      alive = false
+    }
+  }, [])
+  if (!status) {
+    return <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-[10px] text-ink-ghost">…</span>
+  }
+  if (!status.installed) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber/12 px-2 py-0.5 text-[10px] text-amber-soft">
+        <Terminal size={10} /> CLI not installed
+      </span>
+    )
+  }
+  if (!status.signedIn) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber/12 px-2 py-0.5 text-[10px] text-amber-soft">
+        <LogIn size={10} /> not signed in
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-mint/12 px-2 py-0.5 text-[10px] text-mint">
+      <CheckCircle2 size={10} /> {status.login ? `@${status.login}` : 'signed in'}
+    </span>
+  )
+}
+
+/** Detect / install / sign-in panel for the Copilot CLI, shown in the form. */
+function CopilotSetup() {
+  const [status, setStatus] = useState<CopilotStatus | null>(null)
+  const [busy, setBusy] = useState<null | 'install' | 'login'>(null)
+  const [log, setLog] = useState<string[]>([])
+  const [err, setErr] = useState<string | null>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  const refresh = () => window.kennel.getCopilotStatus().then(setStatus)
+
+  useEffect(() => {
+    void refresh()
+    const off = window.kennel.onCopilotSetup((e) => {
+      if (e.line) setLog((l) => [...l, e.line!].slice(-400))
+      if (e.phase === 'error' && e.error) setErr(e.error)
+    })
+    return off
+  }, [])
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+  }, [log])
+
+  const run = async (kind: 'install' | 'login') => {
+    setErr(null)
+    setLog([])
+    setBusy(kind)
+    try {
+      const next = kind === 'install' ? await window.kennel.installCopilot() : await window.kennel.loginCopilot()
+      setStatus(next)
+    } catch (e: any) {
+      setErr((prev) => prev ?? (e?.message ?? String(e)))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const cancel = async () => {
+    await window.kennel.cancelCopilotSetup()
+    setBusy(null)
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-line bg-surface/60 p-4">
+      <div className="flex items-center gap-2">
+        <Github size={15} className="text-ink-soft" />
+        <span className="text-sm font-medium text-ink">GitHub Copilot CLI</span>
+        <button
+          onClick={() => void refresh()}
+          title="Re-check"
+          className="no-drag ml-auto rounded-md p-1 text-ink-ghost transition-colors hover:text-ink"
+        >
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-ink-faint">
+        No API key. Personas on this provider run through the GitHub Copilot SDK (bundled with Kennel)
+        in the node’s working tree — and a Copilot-backed Walker / Care Taker orchestrates via Kennel’s
+        own tools. You just need to <span className="text-ink-soft">sign in</span> to GitHub. Model access
+        requires an active GitHub Copilot subscription with CLI access on your account.
+      </p>
+
+      {/* Status row */}
+      <div className="flex items-center gap-2 text-xs">
+        {status === null ? (
+          <span className="text-ink-ghost">Checking…</span>
+        ) : !status.installed ? (
+          <span className="inline-flex items-center gap-1 text-amber-soft">
+            <Terminal size={13} /> CLI not found on this machine.
+          </span>
+        ) : !status.signedIn ? (
+          <span className="inline-flex items-center gap-1 text-amber-soft">
+            <LogIn size={13} /> {status.version ?? 'Installed'} — not signed in.
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-mint">
+            <CheckCircle2 size={13} /> {status.version ?? 'Installed'}
+            {status.login ? ` · signed in as ${status.login}` : ' · signed in'}
+            {status.models.length > 0 && (
+              <span className="text-ink-faint"> · {status.models.length} models</span>
+            )}
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      {status && !busy && (
+        <div className="flex flex-wrap gap-2">
+          {!status.installed && (
+            <Button variant="primary" className="text-xs" onClick={() => void run('install')}>
+              <Download size={13} /> Install CLI
+            </Button>
+          )}
+          {status.installed && (
+            <Button variant={status.signedIn ? 'ghost' : 'primary'} className="text-xs" onClick={() => void run('login')}>
+              <LogIn size={13} /> {status.signedIn ? 'Sign in again' : 'Sign in'}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {busy && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs text-ink-soft">
+            <Loader2 size={13} className="animate-spin" />
+            {busy === 'install' ? 'Installing Copilot CLI…' : 'Waiting for GitHub sign-in…'}
+            <button onClick={() => void cancel()} className="no-drag ml-auto inline-flex items-center gap-1 text-ink-ghost hover:text-rose">
+              <X size={12} /> Cancel
+            </button>
+          </div>
+          {busy === 'login' && (
+            <p className="text-[11px] text-ink-faint">
+              Open the URL shown below in your browser and enter the one-time code to authorize Copilot.
+            </p>
+          )}
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div
+          ref={logRef}
+          className="max-h-44 overflow-auto rounded-lg border border-line bg-black/40 p-2 font-mono text-[10.5px] leading-relaxed text-ink-faint"
+        >
+          {log.map((l, i) => (
+            <div key={i} className="whitespace-pre-wrap break-words">
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {err && (
+        <div className="flex items-start gap-2 rounded-lg bg-rose/10 px-3 py-2 text-[11px] text-rose-soft">
+          <XCircle size={13} className="mt-0.5 shrink-0" />
+          <span className="selectable break-words">{err}</span>
+        </div>
+      )}
+    </div>
   )
 }

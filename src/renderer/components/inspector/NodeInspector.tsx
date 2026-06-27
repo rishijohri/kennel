@@ -10,7 +10,9 @@ import {
   GitCompare,
   Info,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Layers,
+  ChevronsDownUp
 } from 'lucide-react'
 import { useKennel } from '../../store/useKennel'
 import { Button, Spinner } from '../ui'
@@ -27,11 +29,13 @@ export function NodeInspector() {
     s.state?.personas.find((p) => p.id === node?.personaId)
   )
   const activeId = useKennel((s) => s.state?.project?.activeNodeId)
+  const focusedNodeId = useKennel((s) => s.state?.project?.focusedNodeId ?? null)
   const running = useKennel((s) => s.running)
   const checkoutNode = useKennel((s) => s.checkoutNode)
   const openLauncher = useKennel((s) => s.openLauncher)
   const deleteNode = useKennel((s) => s.deleteNode)
   const selectNode = useKennel((s) => s.selectNode)
+  const setFocusedNode = useKennel((s) => s.setFocusedNode)
 
   const isRunning = node ? Boolean(running[node.id]) || node.status === 'running' : false
   const anyRunning = Object.keys(running).length > 0
@@ -126,6 +130,28 @@ export function NodeInspector() {
               Retry
             </Button>
           )}
+          {node.kind !== 'root' &&
+            (focusedNodeId === node.id ? (
+              <Button
+                variant="ghost"
+                onClick={() => void setFocusedNode(null)}
+                className="px-3 py-1.5 text-xs"
+                title="Expand — show the whole canvas again"
+              >
+                <ChevronsDownUp size={13} />
+                Expand
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => void setFocusedNode(node.id)}
+                className="px-3 py-1.5 text-xs"
+                title="Collapse everything outside this node's subtree into a single source"
+              >
+                <Layers size={13} />
+                Collapse
+              </Button>
+            ))}
           {node.kind !== 'root' && (
             <Button
               variant="ghost"

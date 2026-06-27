@@ -1,3 +1,4 @@
+import { app } from 'electron'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -58,7 +59,7 @@ function makeTransport(server: McpServerConfig) {
 }
 
 async function newClient(server: McpServerConfig): Promise<Client> {
-  const client = new Client({ name: 'kennel', version: '0.1.0' }, { capabilities: {} })
+  const client = new Client({ name: 'kennel', version: app.getVersion() }, { capabilities: {} })
   const transport = makeTransport(server)
   try {
     await withTimeout(client.connect(transport), 20_000, `Connecting to "${server.name}"`)

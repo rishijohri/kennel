@@ -17,10 +17,14 @@ export function AgentConfigRow({
   onSave: (c: { providerId: string; model: string } | null) => void
   onAddProvider: () => void
 }) {
-  const [providerId, setProviderId] = useState(config?.providerId || providers[0]?.id || '')
+  // Coerce a saved provider that's no longer offered here (e.g. a Copilot
+  // provider, which can't orchestrate the Walker/Care Taker) to the first valid
+  // one, so the picker is never stuck on an unselectable value.
+  const initialId = providers.find((p) => p.id === config?.providerId)?.id || providers[0]?.id || ''
+  const [providerId, setProviderId] = useState(initialId)
   const [model, setModel] = useState(
-    config?.model ||
-      providers.find((p) => p.id === (config?.providerId || providers[0]?.id))?.defaultModel ||
+    (initialId === config?.providerId ? config?.model : '') ||
+      providers.find((p) => p.id === initialId)?.defaultModel ||
       ''
   )
 

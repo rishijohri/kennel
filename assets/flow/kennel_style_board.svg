@@ -1,0 +1,151 @@
+<svg width="1600" height="1600" viewBox="0 0 1600 1600" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, Inter, Segoe UI, sans-serif">
+  <defs>
+    <radialGradient id="glowIris" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7c6cff" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#7c6cff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#7c6cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowMint" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4fd6a8" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#4fd6a8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowAmber" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffb454" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#ffb454" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ffb454" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="irisGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9a8dff"/>
+      <stop offset="55%" stop-color="#7c6cff"/>
+      <stop offset="100%" stop-color="#5b4ddb"/>
+    </linearGradient>
+    <linearGradient id="cardFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1c2030"/>
+      <stop offset="100%" stop-color="#161922"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Deep-space base + ambient brand glows (mirrors the app's #root background) -->
+  <rect width="1600" height="1600" fill="#0a0b10"/>
+  <ellipse cx="1300" cy="80" rx="1000" ry="560" fill="url(#glowIris)"/>
+  <ellipse cx="140" cy="1560" rx="850" ry="500" fill="url(#glowMint)"/>
+
+  <!-- Header -->
+  <text x="60" y="118" fill="#e7e9f3" font-size="62" font-weight="700">Kennel — Film Look</text>
+  <text x="62" y="162" fill="#a9adc4" font-size="23" font-weight="500" letter-spacing="2.5">DARK-MODE BRAND PALETTE · NODE-CARD REFERENCE · COLOR GRADE</text>
+
+  <!-- Palette swatches (7 across) -->
+  <g>
+    <!-- base -->
+    <rect x="60" y="230" width="200" height="150" rx="18" fill="#101218" stroke="#262a3a" stroke-width="1.5"/>
+    <text x="82" y="320" fill="#e7e9f3" font-size="25" font-weight="600">Base</text>
+    <text x="82" y="354" fill="#6b7090" font-family="ui-monospace, monospace" font-size="21">#0A0B10</text>
+    <!-- iris -->
+    <rect x="278" y="230" width="200" height="150" rx="18" fill="#7c6cff"/>
+    <text x="300" y="320" fill="#0a0b10" font-size="25" font-weight="700">Iris</text>
+    <text x="300" y="354" fill="#0a0b10" font-family="ui-monospace, monospace" font-size="21">#7C6CFF</text>
+    <!-- iris deep -->
+    <rect x="496" y="230" width="200" height="150" rx="18" fill="#5b4ddb"/>
+    <text x="518" y="320" fill="#e7e9f3" font-size="25" font-weight="700">Iris deep</text>
+    <text x="518" y="354" fill="#cdc7ff" font-family="ui-monospace, monospace" font-size="21">#5B4DDB</text>
+    <!-- amber -->
+    <rect x="714" y="230" width="200" height="150" rx="18" fill="#ffb454"/>
+    <text x="736" y="320" fill="#0a0b10" font-size="25" font-weight="700">Amber</text>
+    <text x="736" y="354" fill="#0a0b10" font-family="ui-monospace, monospace" font-size="21">#FFB454</text>
+    <!-- mint -->
+    <rect x="932" y="230" width="200" height="150" rx="18" fill="#4fd6a8"/>
+    <text x="954" y="320" fill="#0a0b10" font-size="25" font-weight="700">Mint</text>
+    <text x="954" y="354" fill="#0a0b10" font-family="ui-monospace, monospace" font-size="21">#4FD6A8</text>
+    <!-- rose -->
+    <rect x="1150" y="230" width="200" height="150" rx="18" fill="#ff6b8b"/>
+    <text x="1172" y="320" fill="#0a0b10" font-size="25" font-weight="700">Rose</text>
+    <text x="1172" y="354" fill="#0a0b10" font-family="ui-monospace, monospace" font-size="21">#FF6B8B</text>
+    <!-- ink -->
+    <rect x="1368" y="230" width="172" height="150" rx="18" fill="#e7e9f3"/>
+    <text x="1390" y="320" fill="#0a0b10" font-size="25" font-weight="700">Ink</text>
+    <text x="1390" y="354" fill="#0a0b10" font-family="ui-monospace, monospace" font-size="21">#E7E9F3</text>
+  </g>
+
+  <!-- section label -->
+  <text x="60" y="500" fill="#6b7090" font-size="23" font-weight="600" letter-spacing="2.5">NODE LANGUAGE — glassy rounded cards · iris edges · glowing handles · amber focal accent</text>
+
+  <!-- edges -->
+  <g stroke-width="3" fill="none">
+    <path d="M 290 700 C 460 700, 460 860, 630 860" stroke="#7c6cff" stroke-opacity="0.55"/>
+    <path d="M 290 700 C 460 700, 460 1080, 630 1090" stroke="#7c6cff" stroke-opacity="0.4" stroke-dasharray="7 6"/>
+  </g>
+
+  <!-- Card 1: root / codebase -->
+  <g>
+    <rect x="80" y="600" width="240" height="160" rx="24" fill="url(#cardFill)" stroke="#7c6cff" stroke-width="2"/>
+    <rect x="104" y="624" width="60" height="60" rx="15" fill="#7c6cff" fill-opacity="0.15" stroke="#7c6cff" stroke-opacity="0.4"/>
+    <rect x="122" y="644" width="24" height="20" rx="4" fill="none" stroke="#9a8dff" stroke-width="2.5"/>
+    <text x="182" y="644" fill="#e7e9f3" font-size="24" font-weight="600">Codebase</text>
+    <text x="182" y="674" fill="#6b7090" font-size="18">root · checked out</text>
+    <circle cx="236" cy="724" r="5" fill="#4fd6a8"/>
+    <text x="252" y="730" fill="#4fd6a8" font-size="17">checked out</text>
+    <circle cx="200" cy="600" r="7" fill="#7c6cff" stroke="#161922" stroke-width="3"/>
+    <circle cx="200" cy="760" r="7" fill="#7c6cff" stroke="#161922" stroke-width="3"/>
+  </g>
+
+  <!-- Card 2: agentic running -->
+  <g>
+    <rect x="630" y="780" width="240" height="160" rx="24" fill="url(#cardFill)" stroke="#7c6cff" stroke-width="2.5"/>
+    <rect x="654" y="804" width="60" height="60" rx="15" fill="#7c6cff" fill-opacity="0.18" stroke="#7c6cff" stroke-opacity="0.45"/>
+    <path d="M 684 820 l 5 13 l 13 5 l -13 5 l -5 13 l -5 -13 l -13 -5 l 13 -5 z" fill="#9a8dff"/>
+    <text x="732" y="824" fill="#e7e9f3" font-size="24" font-weight="600">Agent step</text>
+    <rect x="732" y="842" width="100" height="28" rx="14" fill="#7c6cff" fill-opacity="0.18"/>
+    <text x="748" y="862" fill="#9a8dff" font-size="16" font-weight="600">running</text>
+    <text x="654" y="912" fill="#6b7090" font-size="17">+128  −34  · 6 files</text>
+  </g>
+
+  <!-- Card 3: deterministic done -->
+  <g>
+    <rect x="630" y="965" width="240" height="150" rx="24" fill="url(#cardFill)" stroke="#262a3a" stroke-width="1.5"/>
+    <rect x="654" y="989" width="60" height="60" rx="15" fill="#ffb454" fill-opacity="0.15" stroke="#ffb454" stroke-opacity="0.4"/>
+    <rect x="671" y="1007" width="24" height="20" rx="4" fill="none" stroke="#ffb454" stroke-width="2.5"/>
+    <text x="732" y="1009" fill="#e7e9f3" font-size="24" font-weight="600">Run tests</text>
+    <rect x="732" y="1027" width="80" height="28" rx="14" fill="#4fd6a8" fill-opacity="0.15"/>
+    <text x="748" y="1047" fill="#4fd6a8" font-size="16" font-weight="600">passed</text>
+    <text x="654" y="1090" fill="#6b7090" font-family="ui-monospace, monospace" font-size="16">$ npm test</text>
+  </g>
+
+  <!-- The hound eye — amber focal accent -->
+  <g>
+    <circle cx="1240" cy="800" r="190" fill="url(#glowAmber)"/>
+    <circle cx="1240" cy="800" r="38" fill="#ffb454"/>
+    <circle cx="1240" cy="800" r="15" fill="#0a0b10"/>
+    <text x="1240" y="1040" fill="#a9adc4" font-size="25" font-weight="600" text-anchor="middle">The amber eye</text>
+    <text x="1240" y="1074" fill="#6b7090" font-size="20" text-anchor="middle">one warm focal accent per shot</text>
+  </g>
+
+  <!-- logo gradient reference -->
+  <rect x="1160" y="600" width="360" height="90" rx="20" fill="url(#irisGrad)"/>
+  <text x="1160" y="734" fill="#6b7090" font-size="19">Logo gradient  #9A8DFF → #7C6CFF → #5B4DDB</text>
+
+  <!-- Color script strip -->
+  <text x="60" y="1230" fill="#6b7090" font-size="23" font-weight="600" letter-spacing="2.5">COLOR SCRIPT — emotional arc across the film</text>
+  <g>
+    <rect x="60" y="1260" width="350" height="90" rx="16" fill="#2b2f3d"/>
+    <text x="80" y="1300" fill="#cfd3e6" font-size="22" font-weight="600">1–2 · Problem</text>
+    <text x="80" y="1330" fill="#8a90ad" font-size="17">cold desaturated slate</text>
+
+    <rect x="428" y="1260" width="350" height="90" rx="16" fill="#3d3a7a"/>
+    <text x="448" y="1300" fill="#e7e9f3" font-size="22" font-weight="600">2–3 · The Turn</text>
+    <text x="448" y="1330" fill="#bdb6ff" font-size="17">cold → iris bloom</text>
+
+    <rect x="796" y="1260" width="350" height="90" rx="16" fill="#5b4ddb"/>
+    <text x="816" y="1300" fill="#ffffff" font-size="22" font-weight="600">3 · Reveal</text>
+    <text x="816" y="1330" fill="#cdc7ff" font-size="17">full electric brand + amber</text>
+
+    <rect x="1164" y="1260" width="376" height="90" rx="16" fill="#123a30"/>
+    <text x="1184" y="1300" fill="#7fe6c4" font-size="22" font-weight="600">7–8 · Vision / CTA</text>
+    <text x="1184" y="1330" fill="#4fd6a8" font-size="17">luminous iris + mint</text>
+  </g>
+
+  <!-- Footer notes -->
+  <line x1="60" y1="1430" x2="1540" y2="1430" stroke="#262a3a" stroke-width="1.5"/>
+  <text x="60" y="1474" fill="#a9adc4" font-size="22" font-weight="600">Type: Inter (UI) · JetBrains Mono (code)</text>
+  <text x="60" y="1512" fill="#6b7090" font-size="20">Grade: clean blacks · electric iris key light · amber focal accent · mint cool accent · soft volumetric glow · no muddy mid-tones</text>
+  <text x="60" y="1550" fill="#474b64" font-size="18">Background #0A0B10 everywhere · upload this frame as a Flow Ingredient on scenes 1, 2, 3 &amp; 7</text>
+</svg>

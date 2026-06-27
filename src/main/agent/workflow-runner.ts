@@ -181,7 +181,10 @@ function resolvePersonaProvider(
   const apiKey = store.getApiKey(persona.providerId) ?? ''
   const vertexAdc =
     provider.kind === 'google-vertex' && Boolean(provider.project) && Boolean(provider.location)
-  if (!(provider.kind === 'openai-compatible' || vertexAdc) && !apiKey) {
+  // Copilot is keyless (CLI OAuth); openai-compatible may be keyless too.
+  const keyless =
+    provider.kind === 'openai-compatible' || provider.kind === 'copilot' || vertexAdc
+  if (!keyless && !apiKey) {
     return { status: 'error', output: `No API key set for provider "${provider.name}".` }
   }
   return { persona, provider, apiKey }
@@ -265,7 +268,12 @@ async function runAgenticStep(
       signal,
       vertex: provider!.kind === 'google-vertex',
       project: provider!.project,
-      location: provider!.location
+      location: provider!.location,
+      // Copilot runs its own loop; writes go to the workspace, codebase is at ./codebase.
+      cwd: ws.workspaceDir,
+      permissions: persona.permissions,
+      copilotAllow: persona.copilotTools?.allow,
+      copilotDeny: persona.copilotTools?.deny
     })
     // If the agent used the marker, honor exactly what follows it (even if empty);
     // otherwise fall back to its whole final message.
@@ -477,7 +485,12 @@ async function runReportStep(
       signal,
       vertex: provider!.kind === 'google-vertex',
       project: provider!.project,
-      location: provider!.location
+      location: provider!.location,
+      // Copilot runs its own loop; writes go to the workspace, codebase is at ./codebase.
+      cwd: ws.workspaceDir,
+      permissions: persona.permissions,
+      copilotAllow: persona.copilotTools?.allow,
+      copilotDeny: persona.copilotTools?.deny
     })
     const report = result.finalText.trim() || out.trim()
     return {

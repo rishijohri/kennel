@@ -1,5 +1,6 @@
 import { store } from './store'
 import { checkoutCommit, unpinNode } from './git'
+import { deleteNodeActivity } from './activity-log'
 
 /**
  * Delete a main-canvas node and all of its descendants. Park nodes also drop
@@ -27,8 +28,14 @@ export async function deleteCanvasNode(nodeId: string): Promise<boolean> {
   for (const id of toDelete) {
     if (store.getPark(id)) store.deletePark(id)
     await unpinNode(project.path, id).catch(() => {})
+    deleteNodeActivity(id) // drop each deleted node's persisted activity log
   }
   store.replaceNodes(nodes.filter((n) => !toDelete.has(n.id)))
+
+  // If the focused (collapse anchor) node was deleted, clear the collapse.
+  if (project.focusedNodeId && toDelete.has(project.focusedNodeId)) {
+    store.setFocusedNode(null)
+  }
 
   if (toDelete.has(project.activeNodeId)) {
     const root = store.getNode(project.rootNodeId)

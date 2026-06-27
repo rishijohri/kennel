@@ -8,6 +8,14 @@ export type ProviderKind =
   | 'openai-compatible'
   | 'google'
   | 'google-vertex'
+  /** Hugging Face Inference Providers — OpenAI-compatible router at router.huggingface.co/v1. */
+  | 'huggingface'
+  /**
+   * GitHub Copilot CLI — no API key. Personas on this provider run by invoking the
+   * locally-installed `copilot` binary (its own agentic loop) in the node's working
+   * tree; readiness = CLI installed + signed in via OAuth (see CopilotStatus).
+   */
+  | 'copilot'
 
 export interface ProviderConfig {
   id: string
@@ -106,6 +114,14 @@ export interface AgentPersona {
    * the UI flag it as the default. Undefined = a user/Care-Taker-created persona.
    */
   builtin?: 'summarize-report'
+  /**
+   * Copilot-only: fine-grained tool gating for personas on a `copilot` provider,
+   * layered on top of the coarse `permissions`. Tool names are Copilot's own
+   * (e.g. "grep", "shell", "write"); `deny` removes tools (always wins), `allow`
+   * restricts to an allow-list when set. Maps to the SDK's excludedTools /
+   * availableTools. Ignored by other providers.
+   */
+  copilotTools?: { allow?: string[]; deny?: string[] }
 }
 
 // ── Care Taker (project-scoped, off-canvas agent) ───────────────────────────
@@ -307,6 +323,14 @@ export interface Project {
    * Park only sees the capabilities it owns (false). Per-project setting.
    */
   shareParkCapabilities?: boolean
+  /**
+   * "Focus" / collapse state: when set, the canvas shows ONLY this node and its
+   * descendants; every other node (its ancestors and unrelated branches) is
+   * hidden behind a single "Collapsed Source" stub. The Walker's view respects
+   * this too — collapsed nodes aren't listed until it reads the stub's activity.
+   * Null/undefined = nothing collapsed (the whole canvas is shown).
+   */
+  focusedNodeId?: string | null
   createdAt: number
 }
 
@@ -669,6 +693,38 @@ export interface SaveProviderInput {
   apiKey?: string
 }
 
+// ── GitHub Copilot CLI (keyless provider, driven via the `copilot` binary) ───
+
+/**
+ * Readiness of the GitHub Copilot CLI, used by the `copilot` provider (which has
+ * no API key — auth is the CLI's own OAuth device flow). Refreshed on demand.
+ */
+export interface CopilotStatus {
+  /** The `copilot` binary was resolved (managed install or on PATH). */
+  installed: boolean
+  /** Resolved absolute path to the binary (null when not installed). */
+  binPath: string | null
+  /** Version string from `copilot --version` (null when unknown). */
+  version: string | null
+  /** A user is signed in (config.json has a logged-in user, or an env token is set). */
+  signedIn: boolean
+  /** The signed-in GitHub login, when known. */
+  login: string | null
+  /** Models the CLI offers (parsed from `--model` choices); empty until resolved. */
+  models: string[]
+}
+
+/** Streamed progress of an in-app Copilot CLI setup step (install / login). */
+export interface CopilotSetupEvent {
+  kind: 'install' | 'login'
+  /** A line of CLI output (device-flow URL+code during login, npm output on install). */
+  line?: string
+  /** A coarse phase transition; 'done'/'error' end the step. */
+  phase?: 'running' | 'done' | 'error'
+  /** Error message when phase === 'error'. */
+  error?: string
+}
+
 // ── Local model server (llama.cpp, downloaded at runtime) ───────────────────
 
 /**
@@ -869,6 +925,16 @@ export interface KennelApi {
     scope: 'project' | 'library'
   }): Promise<{ state: KennelState; switched: number }>
 
+  // GitHub Copilot CLI — the keyless `copilot` provider's setup/readiness.
+  /** Detect the `copilot` binary + signed-in state + offered models. */
+  getCopilotStatus(): Promise<CopilotStatus>
+  /** Install the Copilot CLI (npm) into Kennel's managed dir; streams onCopilotSetup. */
+  installCopilot(): Promise<CopilotStatus>
+  /** Run `copilot login` (OAuth device flow); streams the code+URL via onCopilotSetup. */
+  loginCopilot(): Promise<CopilotStatus>
+  /** Cancel an in-flight install/login. */
+  cancelCopilotSetup(): Promise<void>
+
   // Personas — a global library; each project includes a chosen subset.
   /** Create/update a persona in the library and ensure it's in the open project. */
   savePersona(persona: AgentPersona): Promise<KennelState>
@@ -958,6 +1024,9 @@ export interface KennelApi {
 
   // Canvas / nodes
   selectNode(nodeId: string): Promise<KennelState>
+  /** Focus the canvas on a node's subtree (collapse everything else into one
+   *  stub), or pass null to clear the collapse. Persisted per project. */
+  setFocusedNode(nodeId: string | null): Promise<KennelState>
   updateNodePosition(nodeId: string, position: { x: number; y: number }): Promise<void>
   /** Bulk position update (e.g. auto-arrange) — persisted in one write. */
   updateNodePositions(
@@ -980,6 +1049,9 @@ export interface KennelApi {
   getNodeChanges(nodeId: string): Promise<NodeChange[]>
   /** Before/after content for one changed file (read-only viewer + diff). */
   getNodeFileDiff(nodeId: string, relPath: string): Promise<NodeFileDiff | null>
+  /** The node's persisted activity log (latest run's streamed events). Survives
+   *  restart; [] if the node never ran or its log wasn't captured. */
+  getNodeActivity(nodeId: string): Promise<RunEvent[]>
 
   // Local model server
   getLocalDefaults(): Promise<LocalDefaults>
@@ -1044,6 +1116,8 @@ export interface KennelApi {
   onDownloadProgress(cb: (p: DownloadProgress) => void): () => void
   /** Auto-updater state changes (checking / available / progress / downloaded / error). */
   onUpdateEvent(cb: (s: UpdateState) => void): () => void
+  /** Streamed progress of an in-app Copilot CLI install / login. */
+  onCopilotSetup(cb: (e: CopilotSetupEvent) => void): () => void
 }
 
 declare global {

@@ -73,6 +73,52 @@ const nextId = () => `l${seq++}`
 // double-invoked effects, so events aren't applied twice.
 let listenersBound = false
 
+/** Fold one run event into a node's activity-log entries. Pure, so the SAME
+ *  reducer drives both live streaming (applyRunEvent) and rehydrating a node's
+ *  persisted activity from disk after a restart (loadNodeActivity). 'start' resets. */
+function reduceLog(prev: LogEntry[], e: RunEvent): LogEntry[] {
+  if (e.type === 'start') return []
+  const arr = [...prev]
+  const last = arr[arr.length - 1]
+  switch (e.type) {
+    case 'status':
+      arr.push({ id: nextId(), kind: 'status', text: e.text })
+      break
+    case 'thinking':
+      if (last && last.kind === 'thinking') arr[arr.length - 1] = { ...last, text: last.text + e.text }
+      else arr.push({ id: nextId(), kind: 'thinking', text: e.text })
+      break
+    case 'assistant':
+      if (last && last.kind === 'assistant') arr[arr.length - 1] = { ...last, text: last.text + e.text }
+      else arr.push({ id: nextId(), kind: 'assistant', text: e.text })
+      break
+    case 'tool_call':
+      arr.push({ id: nextId(), kind: 'tool', callId: e.callId, tool: e.tool, input: e.input })
+      break
+    case 'tool_result': {
+      const idx = [...arr].reverse().findIndex((l) => l.kind === 'tool' && l.callId === e.callId)
+      if (idx >= 0) {
+        const realIdx = arr.length - 1 - idx
+        const entry = arr[realIdx]
+        if (entry.kind === 'tool') arr[realIdx] = { ...entry, ok: e.ok, preview: e.preview }
+      }
+      break
+    }
+    case 'output':
+      if (last && last.kind === 'output' && last.stream === e.stream)
+        arr[arr.length - 1] = { ...last, text: last.text + e.text }
+      else arr.push({ id: nextId(), kind: 'output', stream: e.stream, text: e.text })
+      break
+    case 'error':
+      arr.push({ id: nextId(), kind: 'error', text: e.message })
+      break
+    case 'done':
+      arr.push({ id: nextId(), kind: 'done', text: e.node.summary ?? 'Done' })
+      break
+  }
+  return arr
+}
+
 // A stable, non-null default so selectors like `s.state.nodes` always return a
 // stable array reference. Returning a fresh `[]` from a selector makes Zustand's
 // useSyncExternalStore loop forever (React error #185).
@@ -163,6 +209,8 @@ interface KennelStore {
 
   selectNode: (nodeId: string | null) => void
   checkoutNode: (nodeId: string) => Promise<void>
+  /** Collapse the canvas to a node's subtree (or null to clear). Persisted. */
+  setFocusedNode: (nodeId: string | null) => Promise<void>
   openLauncher: (parentId: string, prefill?: LauncherPrefill, parkId?: string) => void
   closeLauncher: () => void
 
@@ -252,6 +300,8 @@ interface KennelStore {
   cancelRun: (nodeId: string) => Promise<void>
 
   applyRunEvent: (e: RunEvent) => void
+  /** Rehydrate a node's activity log from disk (after restart) if not already live. */
+  loadNodeActivity: (nodeId: string) => Promise<void>
   nodeById: (id: string) => CanvasNode | undefined
 }
 
@@ -489,6 +539,15 @@ export const useKennel = create<KennelStore>((set, get) => ({
   dismissToast: (id) => set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
 
   selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+
+  setFocusedNode: async (nodeId) => {
+    try {
+      const s = await window.kennel.setFocusedNode(nodeId)
+      set({ state: s })
+    } catch (e: any) {
+      get().pushToast('error', e?.message ?? 'Could not change the canvas focus')
+    }
+  },
 
   checkoutNode: async (nodeId) => {
     try {
@@ -1020,66 +1079,30 @@ export const useKennel = create<KennelStore>((set, get) => ({
 
   applyRunEvent: (e) => {
     set((st) => {
-      const logs = { ...st.logs }
-      const arr = logs[e.nodeId] ? [...logs[e.nodeId]] : []
-      const last = arr[arr.length - 1]
       const running = { ...st.running }
-
-      switch (e.type) {
-        case 'start':
-          running[e.nodeId] = e.runId
-          logs[e.nodeId] = []
-          return { logs, running }
-        case 'status':
-          arr.push({ id: nextId(), kind: 'status', text: e.text })
-          break
-        case 'thinking':
-          if (last && last.kind === 'thinking')
-            arr[arr.length - 1] = { ...last, text: last.text + e.text }
-          else arr.push({ id: nextId(), kind: 'thinking', text: e.text })
-          break
-        case 'assistant':
-          if (last && last.kind === 'assistant')
-            arr[arr.length - 1] = { ...last, text: last.text + e.text }
-          else arr.push({ id: nextId(), kind: 'assistant', text: e.text })
-          break
-        case 'tool_call':
-          arr.push({
-            id: nextId(),
-            kind: 'tool',
-            callId: e.callId,
-            tool: e.tool,
-            input: e.input
-          })
-          break
-        case 'tool_result': {
-          const idx = [...arr].reverse().findIndex((l) => l.kind === 'tool' && l.callId === e.callId)
-          if (idx >= 0) {
-            const realIdx = arr.length - 1 - idx
-            const entry = arr[realIdx]
-            if (entry.kind === 'tool') {
-              arr[realIdx] = { ...entry, ok: e.ok, preview: e.preview }
-            }
-          }
-          break
-        }
-        case 'output':
-          if (last && last.kind === 'output' && last.stream === e.stream)
-            arr[arr.length - 1] = { ...last, text: last.text + e.text }
-          else arr.push({ id: nextId(), kind: 'output', stream: e.stream, text: e.text })
-          break
-        case 'error':
-          arr.push({ id: nextId(), kind: 'error', text: e.message })
-          delete running[e.nodeId]
-          break
-        case 'done':
-          arr.push({ id: nextId(), kind: 'done', text: e.node.summary ?? 'Done' })
-          delete running[e.nodeId]
-          break
+      if (e.type === 'start') running[e.nodeId] = e.runId
+      else if (e.type === 'error' || e.type === 'done') delete running[e.nodeId]
+      return {
+        logs: { ...st.logs, [e.nodeId]: reduceLog(st.logs[e.nodeId] ?? [], e) },
+        running
       }
-      logs[e.nodeId] = arr
-      return { logs, running }
     })
+  },
+
+  loadNodeActivity: async (nodeId) => {
+    // Hydrate a node's Log view from disk only when nothing is live in memory and
+    // the node isn't running — so we never clobber an in-flight stream.
+    const st = get()
+    if (st.running[nodeId] || (st.logs[nodeId]?.length ?? 0) > 0) return
+    try {
+      const events = await window.kennel.getNodeActivity(nodeId)
+      if (events.length === 0) return
+      const cur = get() // re-check: a run may have started while we awaited
+      if (cur.running[nodeId] || (cur.logs[nodeId]?.length ?? 0) > 0) return
+      set((s) => ({ logs: { ...s.logs, [nodeId]: events.reduce(reduceLog, [] as LogEntry[]) } }))
+    } catch {
+      /* non-fatal — the live log still works this session */
+    }
   },
 
   nodeById: (id) => get().state?.nodes.find((n) => n.id === id)

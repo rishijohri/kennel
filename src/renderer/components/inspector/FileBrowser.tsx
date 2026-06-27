@@ -1,24 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
 import type { FileNodeTree } from '@shared/types'
 import { Spinner } from '../ui'
-import { CodeViewer } from './CodeViewer'
+import { FileViewerModal } from './FileViewerModal'
 
 export function FileBrowser({ nodeId }: { nodeId: string }) {
   const [tree, setTree] = useState<FileNodeTree | null>(null)
   const [loading, setLoading] = useState(true)
+  // The file currently open in the read-only Monaco modal (null = none).
   const [selected, setSelected] = useState<string | null>(null)
-  const [content, setContent] = useState<string>('')
-  const [loadingFile, setLoadingFile] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['']))
-  const reqRef = useRef(0) // guards against out-of-order getFileContent responses
 
   useEffect(() => {
     let alive = true
     setLoading(true)
     setSelected(null)
-    setContent('')
     window.kennel
       .getFileTree(nodeId)
       .then((t) => {
@@ -36,21 +33,8 @@ export function FileBrowser({ nodeId }: { nodeId: string }) {
     }
   }, [nodeId])
 
-  const openFile = async (path: string) => {
-    setSelected(path)
-    setLoadingFile(true)
-    const req = ++reqRef.current
-    try {
-      const text = await window.kennel.getFileContent(nodeId, path)
-      if (req !== reqRef.current) return // a newer file was clicked — ignore stale result
-      setContent(text)
-    } catch (e: any) {
-      if (req !== reqRef.current) return
-      setContent(`// Failed to load file: ${e?.message ?? 'unknown error'}`)
-    } finally {
-      if (req === reqRef.current) setLoadingFile(false)
-    }
-  }
+  // Clicking a file opens it in the read-only Monaco modal.
+  const openFile = (path: string) => setSelected(path)
 
   const toggle = (path: string) =>
     setExpanded((prev) => {
@@ -77,7 +61,7 @@ export function FileBrowser({ nodeId }: { nodeId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-[0_0_42%] overflow-y-auto border-b border-line/70 p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <TreeLevel
           nodes={tree.children}
           depth={0}
@@ -87,31 +71,9 @@ export function FileBrowser({ nodeId }: { nodeId: string }) {
           onOpen={openFile}
         />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">
-        {selected ? (
-          <>
-            <div className="flex items-center gap-1.5 border-b border-line/50 px-3 py-1.5 text-[11px] text-ink-faint">
-              <File size={11} />
-              <span className="truncate font-mono">{selected}</span>
-            </div>
-            <div className="min-h-0 flex-1 bg-[#0a0b10]">
-              {loadingFile ? (
-                <div className="flex h-full items-center justify-center text-ink-faint">
-                  <Spinner size={16} />
-                </div>
-              ) : content === '' ? (
-                <div className="p-4 text-xs text-ink-ghost">Empty file.</div>
-              ) : (
-                <CodeViewer path={selected} content={content} />
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-ink-ghost">
-            Select a file to preview
-          </div>
-        )}
-      </div>
+      {selected && (
+        <FileViewerModal nodeId={nodeId} file={{ path: selected }} onClose={() => setSelected(null)} />
+      )}
     </div>
   )
 }
