@@ -6,6 +6,8 @@ out
 dist
 release
 *.tsbuildinfo
+# Stray electron-vite bundle occasionally emitted at the repo root.
+/index.js
 
 # Local runtime data (Kennel stores API keys, projects, models here — never commit)
 .kennel-local

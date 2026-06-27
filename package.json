@@ -16,10 +16,12 @@
     "dist": "electron-vite build && electron-builder",
     "dist:dir": "electron-vite build && electron-builder --dir",
     "dist:mac": "npm run dist && bash build/sign-dmg.sh",
-    "release": "electron-vite build && electron-builder --publish always && bash build/sign-dmg.sh && gh release upload \"v$npm_package_version\" release/*.dmg --clobber"
+    "release": "bash build/release.sh",
+    "release:dist": "electron-vite build && electron-builder --publish always && bash build/sign-dmg.sh && gh release upload \"v$npm_package_version\" release/*.dmg --clobber"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
+    "@github/copilot-sdk": "^1.0.4",
     "@google/genai": "^2.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@monaco-editor/react": "^4.7.0",

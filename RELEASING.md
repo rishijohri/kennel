@@ -1,58 +1,62 @@
-# Releasing Kennel (with auto-update)
+# Releasing Kennel
 
 Kennel ships a built-in auto-updater (`electron-updater`) that pulls new versions from
 this repo's **GitHub Releases**. For an update to be discoverable, a release must contain
-the update metadata electron-builder generates — most importantly **`latest-mac.yml`** plus
-the universal **`.zip`** (the macOS updater installs from the zip, not the dmg).
+the metadata electron-builder generates — most importantly **`latest-mac.yml`** plus the
+universal **`.zip`** (the macOS updater installs from the zip, not the dmg).
 
 > Auto-update only runs in the **packaged, Developer-ID-signed** app. It is a no-op in `npm run dev`
 > and in unsigned builds. Existing installs only gain the updater once a user installs a build that
 > contains it — the first upgrade after this change is still a manual download.
 
-## One-command release
+## One command
 
 ```bash
-# 1. Bump the version FIRST (electron-updater compares semver).
-#    Edit package.json "version", e.g. 0.1.0 -> 0.1.1
-
-# 2. Provide the signing + publishing credentials in the environment:
-export GH_TOKEN=<a GitHub token with repo scope>          # used by electron-builder --publish
+# Provide signing + publishing credentials once per shell:
+export GH_TOKEN=<GitHub token with repo scope>           # electron-builder --publish + gh
 export APPLE_ID=<your Apple ID>
-export APPLE_APP_SPECIFIC_PASSWORD=<app-specific password> # appleid.apple.com → App-Specific Passwords
+export APPLE_APP_SPECIFIC_PASSWORD=<app-specific password>  # appleid.apple.com → App-Specific Passwords
 export APPLE_TEAM_ID=<your Apple Team ID>
 
-# 3. Build, publish the update artifacts, sign the dmg, and upload the signed dmg:
-npm run release
+npm run release                # patch bump: 0.1.0 → 0.1.1
+npm run release -- minor       # 0.1.0 → 0.2.0
+npm run release -- major       # 0.1.0 → 1.0.0
+npm run release -- 1.4.2       # explicit version
 ```
 
-`npm run release` runs:
+That single command ([`build/release.sh`](build/release.sh)) does everything, in order:
 
-1. `electron-vite build` — compile main/preload/renderer.
-2. `electron-builder --publish always` — package the universal **dmg + zip**, generate
-   **`latest-mac.yml`** + blockmaps, and upload them (plus a placeholder dmg) to a **draft**
-   GitHub release tagged `v<version>`. The `.app` inside both the dmg and zip is signed +
-   notarized here (`notarize: true`).
-3. `build/sign-dmg.sh` — sign, notarize, and staple the **dmg container** (electron-builder
-   leaves it unsigned), so the dmg opens cleanly on any Mac.
-4. `gh release upload "v<version>" release/*.dmg --clobber` — replace the placeholder dmg on
-   the draft with the signed/stapled one.
+1. **Bumps the version** in `package.json` (the only source of truth — `app.getVersion()`
+   and the MCP client id read from it at runtime).
+2. **Builds + publishes** the universal **dmg + zip**, generates **`latest-mac.yml`** +
+   blockmaps, and uploads them to a **draft** GitHub release tagged `v<version>`. The `.app`
+   inside both archives is signed + notarized here (`notarize: true`). *(= `npm run release:dist`.)*
+3. **Signs + notarizes + staples the dmg container** (electron-builder leaves it unsigned) and
+   replaces the placeholder dmg on the release with the signed one.
+4. **Promotes the release** out of draft and marks it `latest`, so the auto-updater and the
+   website's `/releases/latest/download/` links resolve.
+5. **Updates the website** — rewrites the `Kennel-<version>-universal.dmg` download links in
+   [`../kennel-website`](../kennel-website), commits + pushes, and redeploys to Vercel
+   (`vercel --prod`).
+6. **Commits the version bump, tags `v<version>`, and pushes** the app repo.
 
-## Then: review and PUBLISH the draft  ⚠️ required
+### Knobs
 
-electron-updater **ignores draft and pre-release** releases. The release stays private until you
-publish it, which is the intended review gate:
+| Env var | Effect |
+| --- | --- |
+| `RELEASE_KEEP_DRAFT=1` | Stop after step 3 (leave the GitHub release a draft for manual review). Skips promote, website, and push. |
+| `RELEASE_SKIP_WEBSITE=1` | Do the full app release but don't touch the website. |
+| `KENNEL_WEBSITE_DIR=<path>` | Point at the website repo if it isn't `../kennel-website`. |
 
-1. Open the new **draft** release on GitHub.
-2. Confirm the assets are all present:
-   - `Kennel-<version>-universal-mac.zip` and `…-mac.zip.blockmap`  ← the updater downloads these
-   - `latest-mac.yml`                                               ← the update feed
-   - `Kennel-<version>-universal.dmg` (signed/stapled) and its `.blockmap`  ← manual installs
-3. Click **Publish release**. Clients now see the update on their next launch / 6-hour re-check.
+> **Review gate.** electron-updater ignores draft/pre-release releases, so step 4 is what makes
+> an update live. If you want to eyeball the assets first, run with `RELEASE_KEEP_DRAFT=1`, inspect
+> the draft on GitHub, then finish with `gh release edit v<version> --draft=false --latest` (and
+> re-run the website + push steps yourself, or just `npm run release` from the now-clean tree).
 
 ### Recovery
 
-The signed dmg lives in `release/` after a run. If step 4's upload fails (e.g. a flaky network
-after `--clobber` removed the old asset), just re-run it — nothing else needs rebuilding:
+The signed dmg lives in `release/` after a run. If the dmg upload fails (e.g. a flaky network),
+re-run just that step — nothing else needs rebuilding:
 
 ```bash
 gh release upload "v<version>" release/*.dmg --clobber
