@@ -16,6 +16,14 @@ directories:
 files:
   - out/**/*
   - package.json
+# The GitHub Copilot SDK ships a bundled runtime (@github/copilot) with native
+# binaries (ripgrep, tree-sitter wasm, prebuilds) that must run from disk, so it
+# can't live inside the asar — unpack it. NOTE: @github/copilot-<os>-<arch> is
+# platform-specific; a universal mac build needs both arm64 + x64 variants
+# present at package time (npm only installs the host arch by default).
+asarUnpack:
+  - node_modules/@github/copilot/**
+  - node_modules/@github/copilot-*/**
 # The llama.cpp engine is NOT bundled — it is downloaded at runtime from GitHub
 # into userData (see services/llama-manager.ts) and ad-hoc-signed there. This
 # keeps the notarized app small and free of third-party binaries (no per-arch

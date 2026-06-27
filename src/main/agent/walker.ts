@@ -7,6 +7,7 @@ import type {
   WalkerMessage
 } from '@shared/types'
 import { parkCapVisible } from '@shared/park-scope'
+import { subtreeIds, COLLAPSED_ID } from '@shared/tree'
 import { store } from '../services/store'
 import { sendState, sendWalkerEvent } from '../services/broadcast'
 import { diff } from '../services/git'
@@ -32,6 +33,7 @@ import {
 } from '../services/parks'
 import { cancelWorkflow, runWorkflow } from './workflow-runner'
 import { deleteCanvasNode } from '../services/node-ops'
+import { getNodeActivity } from '../services/activity-log'
 
 let controller: AbortController | null = null
 
@@ -136,7 +138,18 @@ function spawnPosition(parentId: string): { x: number; y: number } {
 
 function activeParentId(): string {
   const project = store.getProject()
-  return project?.activeNodeId ?? project?.rootNodeId ?? ''
+  if (!project) return ''
+  // When the canvas is collapsed/focused, the checked-out node may be HIDDEN
+  // (outside the focused subtree). Spawning under it would create a node the
+  // user can't see — so default new work to the focus node, keeping it visible.
+  const focusId = project.focusedNodeId
+  if (focusId) {
+    const all = store.getNodes()
+    if (all.some((n) => n.id === focusId) && !subtreeIds(all, focusId).has(project.activeNodeId)) {
+      return focusId
+    }
+  }
+  return project.activeNodeId ?? project.rootNodeId ?? ''
 }
 
 function compact(input: unknown): string {
@@ -283,14 +296,14 @@ function describeOutcome(cap: Capture): { ok: boolean; content: string } {
 const getCanvasTool: ToolDef = {
   name: 'get_canvas',
   description:
-    'Get the entire canvas graph: every node with its id, title, kind, parent, status, inferred result-state, change summary and diff stats. Call this to understand the whole picture before deciding what to spawn next.',
+    'Get the canvas graph: every node with its id, title, kind, parent, status, inferred result-state, change summary and diff stats. Call this to understand the picture before deciding what to spawn next. If the user has COLLAPSED a node, only that node\'s subtree is shown plus a single "Collapsed" stub (id "__collapsed__") standing in for the hidden nodes — read its activity to see inside.',
   schema: { type: 'object', properties: {} }
 }
 
 const readNodeTool: ToolDef = {
   name: 'read_node',
   description:
-    'Read one node in detail: its prompt/command, status, result-state, summary, error and diff stats. Use the node id from get_canvas.',
+    'Read one node in detail: its prompt/command, status, result-state, SUMMARY, error and diff stats. This summary is your FIRST reference for what a node did — prefer it. Only call read_node_activity if the summary is insufficient. Use the node id from get_canvas.',
   schema: {
     type: 'object',
     properties: { node: { type: 'string', description: 'The node id.' } },
@@ -307,6 +320,43 @@ const readNodeDiffTool: ToolDef = {
     properties: { node: { type: 'string', description: 'The node id.' } },
     required: ['node']
   }
+}
+
+const readNodeActivityTool: ToolDef = {
+  name: 'read_node_activity',
+  description:
+    "Read a node's FULL activity log from its last run — the agent's streamed thinking, every tool call + result, and command stdout/stderr. This is persisted, so it works for OLD nodes even across app restarts. ALWAYS prefer the `summary` from read_node first; only reach for this heavier log when the summary doesn't explain WHAT a node did or WHY it failed. Special case: reading the \"__collapsed__\" stub instead lists the hidden (collapsed) nodes and their connections so you can then read any by id.",
+  schema: {
+    type: 'object',
+    properties: { node: { type: 'string', description: 'The node id.' } },
+    required: ['node']
+  }
+}
+
+/** Render a node's persisted RunEvents as a compact, readable transcript. */
+function formatActivity(events: RunEvent[]): string {
+  const compact = (input: unknown): string => {
+    if (input == null) return ''
+    if (typeof input === 'object') {
+      const o = input as Record<string, unknown>
+      return String(o.command ?? o.query ?? o.path ?? JSON.stringify(o)).slice(0, 200)
+    }
+    return String(input).slice(0, 200)
+  }
+  const lines: string[] = []
+  for (const e of events) {
+    switch (e.type) {
+      case 'status': lines.push(`· ${e.text}`); break
+      case 'thinking': lines.push(`[thinking] ${e.text.trim()}`); break
+      case 'assistant': lines.push(e.text.trim()); break
+      case 'tool_call': lines.push(`→ ${e.tool}(${compact(e.input)})`); break
+      case 'tool_result': lines.push(`  ${e.ok ? '✓' : '✗'} ${e.preview}`); break
+      case 'output': lines.push(`[${e.stream}] ${e.text.trimEnd()}`); break
+      case 'error': lines.push(`ERROR: ${e.message}`); break
+      case 'done': lines.push(`✓ done: ${e.node.summary ?? ''}`); break
+    }
+  }
+  return lines.filter((l) => l.trim()).join('\n')
 }
 
 const spawnAgenticTool: ToolDef = {
@@ -449,6 +499,7 @@ const WALKER_TOOLS = [
   getCanvasTool,
   readNodeTool,
   readNodeDiffTool,
+  readNodeActivityTool,
   spawnAgenticTool,
   spawnProcessTool,
   checkProgressTool,
@@ -793,9 +844,16 @@ function makeExecutor(
 
     if (name === 'get_canvas') {
       const active = project.activeNodeId
-      const nodes = store.getNodes().map((n) => ({
+      const all = store.getNodes()
+      // Respect a collapse: show only the focused node's subtree, plus one stub
+      // standing in for everything hidden (ancestors + other branches).
+      const focusId = project.focusedNodeId
+      const visible = focusId && all.some((n) => n.id === focusId) ? subtreeIds(all, focusId) : null
+      const shown = visible ? all.filter((n) => visible.has(n.id)) : all
+      const nodes: Record<string, unknown>[] = shown.map((n) => ({
         id: n.id,
-        parentId: n.parentId,
+        // Reroute the focus node's parent to the collapsed stub so the graph reads.
+        parentId: visible && n.id === focusId ? COLLAPSED_ID : n.parentId,
         title: n.title,
         kind: n.kind,
         status: n.status,
@@ -808,12 +866,27 @@ function makeExecutor(
         diff: n.diffStat,
         active: n.id === active
       }))
+      if (visible) {
+        const hiddenCount = all.length - visible.size
+        nodes.push({
+          id: COLLAPSED_ID,
+          parentId: null,
+          title: `Collapsed (${hiddenCount} hidden)`,
+          kind: 'collapsed',
+          summary: `${hiddenCount} node(s) — this subtree's ancestors and unrelated branches — are collapsed and hidden. Call read_node_activity with node id "${COLLAPSED_ID}" to list them and their connections, then read any by id.`
+        })
+      }
       return {
         ok: true,
         content: JSON.stringify(
           {
             activeNodeId: active,
             rootNodeId: project.rootNodeId,
+            focusedNodeId: visible ? focusId : null,
+            // The checked-out node is hidden inside the collapse — new spawns
+            // default to the focused node so they stay visible (pass an explicit
+            // `parent` to override).
+            activeNodeHidden: visible ? !visible.has(active) : false,
             nodesSpawnedThisTask: state.spawned,
             nodeBudget: budget,
             nodes
@@ -825,6 +898,28 @@ function makeExecutor(
     }
 
     if (name === 'read_node') {
+      if (String(input.node ?? '') === COLLAPSED_ID) {
+        const focusId = project.focusedNodeId
+        const all = store.getNodes()
+        if (!focusId || !all.some((n) => n.id === focusId)) {
+          return { ok: true, content: 'Nothing is currently collapsed — the full canvas is shown by get_canvas.' }
+        }
+        const visible = subtreeIds(all, focusId)
+        return {
+          ok: true,
+          content: JSON.stringify(
+            {
+              id: COLLAPSED_ID,
+              kind: 'collapsed',
+              focusNode: focusId,
+              hiddenCount: all.filter((n) => !visible.has(n.id)).length,
+              note: 'A collapsed region. Call read_node_activity on this id to list the hidden nodes and their connections.'
+            },
+            null,
+            2
+          )
+        }
+      }
       const n = store.getNode(String(input.node ?? ''))
       if (!n) return { ok: false, content: `No node with id "${input.node}".` }
       return {
@@ -861,6 +956,60 @@ function makeExecutor(
       const text = await diff(project.path, parent.commit, n.commit)
       const clipped = text.length > 20_000 ? text.slice(0, 20_000) + '\n…[truncated]' : text
       return { ok: true, content: clipped || '(no changes)' }
+    }
+
+    if (name === 'read_node_activity') {
+      // Reading the collapsed stub's activity is the "drill-in": it reveals the
+      // hidden nodes' list + connections (ancestry) so the Walker can then read
+      // any of them by id. (Hidden node data stays out of get_canvas until here.)
+      if (String(input.node ?? '') === COLLAPSED_ID) {
+        const focusId = project.focusedNodeId
+        const all = store.getNodes()
+        if (!focusId || !all.some((n) => n.id === focusId)) {
+          return { ok: true, content: 'Nothing is currently collapsed — the full canvas is shown by get_canvas.' }
+        }
+        const visible = subtreeIds(all, focusId)
+        const hidden = all
+          .filter((n) => !visible.has(n.id))
+          .map((n) => ({
+            id: n.id,
+            parentId: n.parentId,
+            title: n.title,
+            kind: n.kind,
+            status: n.status,
+            resultState: n.resultState,
+            persona: n.personaId ? store.getPersona(n.personaId)?.name : undefined,
+            summary: n.summary
+          }))
+        return {
+          ok: true,
+          content: JSON.stringify(
+            {
+              collapsed: true,
+              focusNode: focusId ?? null,
+              hiddenCount: hidden.length,
+              note: 'These nodes (the focus subtree\'s ancestors + unrelated branches) are hidden from get_canvas. Read any by id with read_node / read_node_activity / read_node_diff.',
+              nodes: hidden
+            },
+            null,
+            2
+          )
+        }
+      }
+      const n = store.getNode(String(input.node ?? ''))
+      if (!n) return { ok: false, content: `No node with id "${input.node}".` }
+      const events = getNodeActivity(n.id)
+      if (events.length === 0) {
+        return {
+          ok: true,
+          content: `(no activity log recorded for "${n.title}" — its summary is: ${n.summary ?? '(none)'})`
+        }
+      }
+      const body = formatActivity(events)
+      // Keep the tail — failures and final results live at the end.
+      const clipped =
+        body.length > 16_000 ? '…[earlier activity truncated]\n' + body.slice(-16_000) : body
+      return { ok: true, content: `summary: ${n.summary ?? '(none)'}\n--- full activity ---\n${clipped}` }
     }
 
     const shared = await runSharedTool(name, input, autonomy, signal)
@@ -1609,7 +1758,9 @@ export async function runWalker(payload: {
   const apiKey = store.getApiKey(config.providerId) ?? ''
   const vertexAdc =
     provider.kind === 'google-vertex' && Boolean(provider.project) && Boolean(provider.location)
-  if (!(provider.kind === 'openai-compatible' || vertexAdc) && !apiKey) {
+  // Copilot is keyless (its own OAuth, checked at run time via assertCopilotReady).
+  const keyless = provider.kind === 'openai-compatible' || provider.kind === 'copilot' || vertexAdc
+  if (!keyless && !apiKey) {
     throw new Error(`No API key set for provider "${provider.name}".`)
   }
 
@@ -1681,7 +1832,11 @@ export async function runWalker(payload: {
       signal: controller.signal,
       vertex: provider.kind === 'google-vertex',
       project: provider.project,
-      location: provider.location
+      location: provider.location,
+      // Copilot: expose the Walker's orchestration tools as custom SDK tools and
+      // disable Copilot's native coding tools — it orchestrates, never edits code.
+      cwd: project.path,
+      exposeKennelTools: true
     })
     // Clear the live stream first (done event), THEN surface the persisted reply
     // via state — avoids a one-frame double-render of the final message.

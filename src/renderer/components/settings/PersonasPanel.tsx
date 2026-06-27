@@ -8,6 +8,13 @@ import { ModelSelect } from '../ModelSelect'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
+/** Parse a comma/space-separated tool list into trimmed, non-empty names. */
+const parseToolList = (s: string): string[] =>
+  s
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+
 type View = { mode: 'list' } | { mode: 'edit'; id: string | 'new' } | { mode: 'library' }
 
 export function PersonasPanel() {
@@ -265,6 +272,9 @@ export function PersonaForm({
     ...initial?.permissions
   })
   const [effort, setEffort] = useState<Effort>(initial?.effort ?? 'high')
+  // Copilot-only fine-grained tool gating (comma-separated tool names).
+  const [copilotDeny, setCopilotDeny] = useState((initial?.copilotTools?.deny ?? []).join(', '))
+  const [copilotAllow, setCopilotAllow] = useState((initial?.copilotTools?.allow ?? []).join(', '))
   const [saving, setSaving] = useState(false)
 
   const onProvider = (id: string) => {
@@ -273,6 +283,7 @@ export function PersonaForm({
     setModel(providers.find((p) => p.id === id)?.defaultModel ?? '')
   }
 
+  const isCopilot = providers.find((p) => p.id === providerId)?.kind === 'copilot'
   const valid = name.trim() && providerId && model.trim()
 
   const save = async () => {
@@ -289,6 +300,13 @@ export function PersonaForm({
       systemPrompt: systemPrompt.trim(),
       permissions: perms,
       effort,
+      copilotTools: (() => {
+        const deny = parseToolList(copilotDeny)
+        const allow = parseToolList(copilotAllow)
+        return deny.length || allow.length
+          ? { allow: allow.length ? allow : undefined, deny: deny.length ? deny : undefined }
+          : undefined
+      })(),
       // Preserve Park scope + its tested I/O contract on edit (don't demote a Park
       // persona); a NEW persona adopts createScope (+ owning Park) from where it
       // was created. Keep builtin/ownerParkId on edit.
@@ -448,6 +466,41 @@ export function PersonaForm({
           />
         </div>
       </div>
+
+      {isCopilot && (
+        <div>
+          <Label>
+            Copilot tools <span className="lowercase text-ink-ghost">(optional)</span>
+          </Label>
+          <p className="mb-1.5 text-[11px] text-ink-ghost">
+            Restrict which of Copilot’s own tools this persona may use, on top of the permissions
+            above. Comma-separated tool names (e.g. <span className="font-mono">grep</span>,{' '}
+            <span className="font-mono">shell</span>, <span className="font-mono">write</span>).
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className="mb-1 block text-[10px] uppercase tracking-wide text-ink-faint">Deny</span>
+              <TextInput
+                placeholder="grep, shell"
+                value={copilotDeny}
+                onChange={(e) => setCopilotDeny(e.target.value)}
+                className="font-mono text-[12px]"
+              />
+            </div>
+            <div>
+              <span className="mb-1 block text-[10px] uppercase tracking-wide text-ink-faint">
+                Allow only
+              </span>
+              <TextInput
+                placeholder="(all allowed)"
+                value={copilotAllow}
+                onChange={(e) => setCopilotAllow(e.target.value)}
+                className="font-mono text-[12px]"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div>
         <Label>Reasoning effort</Label>

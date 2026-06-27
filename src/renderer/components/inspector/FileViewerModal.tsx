@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { Editor, DiffEditor } from '@monaco-editor/react'
-import { Code2, GitCompare, Columns2, Rows2, X, FileWarning } from 'lucide-react'
+import { Code2, GitCompare, Columns2, Rows2, X, FileWarning, FileCode2 } from 'lucide-react'
 import type { NodeChange, NodeFileDiff } from '@shared/types'
 import { Modal, Spinner } from '../ui'
 import { ensureKennelTheme, languageForPath } from '../../lib/monaco'
@@ -34,27 +34,42 @@ const EDITOR_OPTS = {
 export function FileViewerModal({
   nodeId,
   change,
+  file,
   onClose
 }: {
   nodeId: string
-  change: NodeChange
+  /** Diff mode — a changed file with a git status (Code/Diff toggle). */
+  change?: NodeChange
+  /** Plain mode — any file from the Files tree (read-only, no diff/status chip). */
+  file?: { path: string }
   onClose: () => void
 }) {
+  const path = change?.path ?? file?.path ?? ''
   const [data, setData] = useState<NodeFileDiff | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'code' | 'diff'>('code')
   const [sideBySide, setSideBySide] = useState(true)
 
-  const lang = languageForPath(change.path)
-  const meta = STATUS_META[change.status]
+  const lang = languageForPath(path)
+  const meta = change ? STATUS_META[change.status] : null
 
   useEffect(() => {
     let alive = true
     setLoading(true)
     setError(null)
-    window.kennel
-      .getNodeFileDiff(nodeId, change.path)
+    // Diff mode loads a before/after payload; plain mode just reads the file and
+    // presents it as an "after"-only payload (no diff toggle).
+    const load: Promise<NodeFileDiff | null> = change
+      ? window.kennel.getNodeFileDiff(nodeId, path)
+      : window.kennel.getFileContent(nodeId, path).then((text) => {
+          // Mirror the diff path's guard: don't pour a binary blob or a huge file
+          // into Monaco (it would freeze the UI). Scan only the head for NUL.
+          const MAX = 1_000_000
+          const binary = text.length > MAX || text.slice(0, 8000).includes(String.fromCharCode(0))
+          return { path, status: 'M' as const, before: null, after: binary ? null : text, binary }
+        })
+    load
       .then((d) => {
         if (!alive) return
         setData(d)
@@ -70,7 +85,7 @@ export function FileViewerModal({
     return () => {
       alive = false
     }
-  }, [nodeId, change.path])
+  }, [nodeId, path, Boolean(change)])
 
   // Escape to close.
   useEffect(() => {
@@ -81,23 +96,27 @@ export function FileViewerModal({
 
   const canDiff = Boolean(data && data.before !== null && data.after !== null)
   const codeValue = data ? (data.after ?? data.before ?? '') : ''
-  const fileName = change.path.split('/').pop()
-  const dir = change.path.split('/').slice(0, -1).join('/')
+  const fileName = path.split('/').pop()
+  const dir = path.split('/').slice(0, -1).join('/')
 
   return (
     <Modal open onClose={onClose} className="flex h-[84vh] max-w-6xl flex-col bg-surface" labelledBy="fv-title">
       {/* Header */}
         <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
-          <span
-            className={clsx('flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold', meta.chip)}
-            title={meta.label}
-          >
-            {change.status}
-          </span>
+          {change && meta ? (
+            <span
+              className={clsx('flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold', meta.chip)}
+              title={meta.label}
+            >
+              {change.status}
+            </span>
+          ) : (
+            <FileCode2 size={16} className="shrink-0 text-ink-faint" />
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <span id="fv-title" className="truncate text-[13px] font-medium text-ink">{fileName}</span>
-              {change.oldPath && (
+              {change?.oldPath && (
                 <span className="truncate text-[11px] text-ink-faint">← {change.oldPath}</span>
               )}
             </div>

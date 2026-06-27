@@ -11,6 +11,7 @@ import type {
 } from '@shared/types'
 import { store } from '../services/store'
 import { sendRunEvent, sendState } from '../services/broadcast'
+import { recordRunEvent } from '../services/activity-log'
 import {
   changedFiles,
   checkoutCommit,
@@ -128,6 +129,7 @@ export function observeRuns(fn: RunObserver): () => void {
 
 function emit(e: RunEvent): void {
   sendRunEvent(e)
+  recordRunEvent(e) // persist to disk so the node's activity survives restart
   for (const o of observers) {
     try {
       o(e)
@@ -193,7 +195,9 @@ export async function startAgenticRun(
   // openai-compatible may be keyless; Vertex may use project+location instead of a key.
   const vertexWithAdc =
     provider.kind === 'google-vertex' && Boolean(provider.project) && Boolean(provider.location)
-  const keyOptional = provider.kind === 'openai-compatible' || vertexWithAdc
+  // Copilot is keyless — auth is the CLI's own OAuth (checked at run time).
+  const keyOptional =
+    provider.kind === 'openai-compatible' || vertexWithAdc || provider.kind === 'copilot'
   if (!keyOptional && !apiKey) {
     throw new Error(`No API key set for provider "${provider.name}".`)
   }
@@ -282,7 +286,14 @@ export async function startAgenticRun(
         signal: controller.signal,
         vertex: provider.kind === 'google-vertex',
         project: provider.project,
-        location: provider.location
+        location: provider.location,
+        // External-engine providers (Copilot) run their own loop in the working
+        // tree using their native tools, gated by the persona's permissions +
+        // optional per-tool allow/deny.
+        cwd: project.path,
+        permissions: persona.permissions,
+        copilotAllow: persona.copilotTools?.allow,
+        copilotDeny: persona.copilotTools?.deny
       }
 
       emit({ runId, nodeId, type: 'status', text: `${persona.name} is working…` })

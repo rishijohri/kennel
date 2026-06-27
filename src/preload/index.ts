@@ -3,6 +3,7 @@ import type {
   AgentPersona,
   CaretakerConfig,
   CaretakerEvent,
+  CopilotSetupEvent,
   CreateAgenticRunInput,
   CreateDeterministicRunInput,
   DeterministicProcess,
@@ -29,6 +30,11 @@ const api: KennelApi = {
   deleteProvider: (id) => ipcRenderer.invoke('kennel:deleteProvider', id),
   testProvider: (id) => ipcRenderer.invoke('kennel:testProvider', id),
   switchProviderModel: (input) => ipcRenderer.invoke('kennel:switchProviderModel', input),
+
+  getCopilotStatus: () => ipcRenderer.invoke('kennel:getCopilotStatus'),
+  installCopilot: () => ipcRenderer.invoke('kennel:installCopilot'),
+  loginCopilot: () => ipcRenderer.invoke('kennel:loginCopilot'),
+  cancelCopilotSetup: () => ipcRenderer.invoke('kennel:cancelCopilotSetup'),
 
   savePersona: (persona: AgentPersona) => ipcRenderer.invoke('kennel:savePersona', persona),
   addPersonaToProject: (id) => ipcRenderer.invoke('kennel:addPersonaToProject', id),
@@ -94,6 +100,7 @@ const api: KennelApi = {
     ipcRenderer.invoke('kennel:getRunWorkspaceFile', parkId, runId, relPath),
 
   selectNode: (nodeId) => ipcRenderer.invoke('kennel:selectNode', nodeId),
+  setFocusedNode: (nodeId) => ipcRenderer.invoke('kennel:setFocusedNode', nodeId),
   updateNodePosition: (nodeId, position) =>
     ipcRenderer.invoke('kennel:updateNodePosition', nodeId, position),
   updateNodePositions: (updates) => ipcRenderer.invoke('kennel:updateNodePositions', updates),
@@ -109,6 +116,7 @@ const api: KennelApi = {
   getFileContent: (nodeId, relPath) =>
     ipcRenderer.invoke('kennel:getFileContent', nodeId, relPath),
   getNodeChanges: (nodeId) => ipcRenderer.invoke('kennel:getNodeChanges', nodeId),
+  getNodeActivity: (nodeId) => ipcRenderer.invoke('kennel:getNodeActivity', nodeId),
   getNodeFileDiff: (nodeId, relPath) =>
     ipcRenderer.invoke('kennel:getNodeFileDiff', nodeId, relPath),
 
@@ -180,6 +188,11 @@ const api: KennelApi = {
     const listener = (_: unknown, s: UpdateState) => cb(s)
     ipcRenderer.on('kennel:update-event', listener)
     return () => ipcRenderer.removeListener('kennel:update-event', listener)
+  },
+  onCopilotSetup: (cb: (e: CopilotSetupEvent) => void) => {
+    const listener = (_: unknown, e: CopilotSetupEvent) => cb(e)
+    ipcRenderer.on('kennel:copilot-setup', listener)
+    return () => ipcRenderer.removeListener('kennel:copilot-setup', listener)
   }
 }
 

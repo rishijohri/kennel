@@ -19,27 +19,36 @@ import '@xyflow/react/dist/style.css'
 import { Workflow } from 'lucide-react'
 import { useKennel } from '../../store/useKennel'
 import { computeTreeLayout } from '../../lib/treeLayout'
+import { subtreeIds, COLLAPSED_ID } from '@shared/tree'
 import { KennelNode, type KennelNodeData } from './KennelNode'
+import { CollapsedNode } from './CollapsedNode'
 
 export function FlowCanvas() {
   const storeNodes = useKennel((s) => s.state?.nodes ?? [])
   const personas = useKennel((s) => s.state?.personas ?? [])
   const activeId = useKennel((s) => s.state?.project?.activeNodeId)
+  // Primitive selector (no new object) — safe under Zustand v5.
+  const focusedNodeId = useKennel((s) => s.state?.project?.focusedNodeId ?? null)
   const selectedNodeId = useKennel((s) => s.selectedNodeId)
   const running = useKennel((s) => s.running)
   const selectNode = useKennel((s) => s.selectNode)
   const updateNodePosition = useKennel((s) => s.updateNodePosition)
   const setNodePositions = useKennel((s) => s.setNodePositions)
 
-  const nodeTypes = useMemo(() => ({ kennel: KennelNode }), [])
+  const nodeTypes = useMemo(() => ({ kennel: KennelNode, collapsed: CollapsedNode }), [])
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<KennelNodeData>>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const rfRef = useRef<ReactFlowInstance<Node<KennelNodeData>, Edge> | null>(null)
 
   useEffect(() => {
-    setNodes((prev) =>
-      storeNodes.map((n) => {
+    // When a node is focused, show ONLY its subtree; collapse everything else
+    // behind one synthetic "Collapsed Source" node placed above the focus.
+    const visible = focusedNodeId ? subtreeIds(storeNodes, focusedNodeId) : null
+    const focusing = Boolean(visible && storeNodes.some((n) => n.id === focusedNodeId))
+    setNodes((prev) => {
+      const list = focusing ? storeNodes.filter((n) => visible!.has(n.id)) : storeNodes
+      const real = list.map((n) => {
         const existing = prev.find((p) => p.id === n.id)
         return {
           id: n.id,
@@ -52,44 +61,99 @@ export function FlowCanvas() {
             isActive: n.id === activeId,
             isRunning: Boolean(running[n.id]) || n.status === 'running'
           }
-        }
+        } as Node<KennelNodeData>
       })
-    )
-  }, [storeNodes, personas, selectedNodeId, activeId, running, setNodes])
+      if (focusing) {
+        const fn = real.find((r) => r.id === focusedNodeId)!
+        real.push({
+          id: COLLAPSED_ID,
+          type: 'collapsed',
+          deletable: false,
+          position: { x: fn.position.x, y: fn.position.y - 150 },
+          data: {
+            count: storeNodes.length - visible!.size,
+            activeInside: Boolean(activeId && !visible!.has(activeId)),
+            runningInside: storeNodes.some(
+              (n) => !visible!.has(n.id) && (Boolean(running[n.id]) || n.status === 'running')
+            )
+          }
+        } as unknown as Node<KennelNodeData>)
+      }
+      return real
+    })
+  }, [storeNodes, personas, selectedNodeId, activeId, running, focusedNodeId, setNodes])
 
   useEffect(() => {
-    setEdges(
-      storeNodes
-        .filter((n) => n.parentId)
-        .map((n) => ({
-          id: `e-${n.parentId}-${n.id}`,
-          source: n.parentId as string,
-          target: n.id,
-          type: 'smoothstep',
-          animated: Boolean(running[n.id]) || n.status === 'running'
-        }))
-    )
-  }, [storeNodes, running, setEdges])
+    const visible = focusedNodeId ? subtreeIds(storeNodes, focusedNodeId) : null
+    const focusing = Boolean(visible && storeNodes.some((n) => n.id === focusedNodeId))
+    const mkEdge = (source: string, target: string, animated: boolean): Edge => ({
+      id: `e-${source}-${target}`,
+      source,
+      target,
+      type: 'smoothstep',
+      animated
+    })
+    if (focusing) {
+      const edges = storeNodes
+        .filter((n) => n.parentId && visible!.has(n.id) && visible!.has(n.parentId as string))
+        .map((n) => mkEdge(n.parentId as string, n.id, Boolean(running[n.id]) || n.status === 'running'))
+      edges.push(mkEdge(COLLAPSED_ID, focusedNodeId as string, false))
+      setEdges(edges)
+    } else {
+      setEdges(
+        storeNodes
+          .filter((n) => n.parentId)
+          .map((n) => mkEdge(n.parentId as string, n.id, Boolean(running[n.id]) || n.status === 'running'))
+      )
+    }
+  }, [storeNodes, running, focusedNodeId, setEdges])
+
+  // Re-fit the viewport when collapsing/expanding so the new visible set is framed.
+  useEffect(() => {
+    const t = setTimeout(() => rfRef.current?.fitView({ padding: 0.3, duration: 400 }), 80)
+    return () => clearTimeout(t)
+  }, [focusedNodeId])
 
   const onNodeClick: NodeMouseHandler = useCallback(
-    (_e, node) => selectNode(node.id),
+    // The collapsed stub handles its own click (expand); never "select" it.
+    (_e, node) => {
+      if (node.id !== COLLAPSED_ID) selectNode(node.id)
+    },
     [selectNode]
   )
 
   const onNodeDragStop: OnNodeDrag<Node<KennelNodeData>> = useCallback(
-    (_e, node) => updateNodePosition(node.id, node.position),
+    (_e, node) => {
+      if (node.id !== COLLAPSED_ID) updateNodePosition(node.id, node.position)
+    },
     [updateNodePosition]
   )
 
   const arrange = useCallback(() => {
     if (storeNodes.length === 0) return
-    const updates = computeTreeLayout(storeNodes)
+    // When focused, lay out only the visible subtree (focus node as the root).
+    const visible = focusedNodeId ? subtreeIds(storeNodes, focusedNodeId) : null
+    const focusing = Boolean(visible && storeNodes.some((n) => n.id === focusedNodeId))
+    const subset = focusing
+      ? storeNodes
+          .filter((n) => visible!.has(n.id))
+          .map((n) => (n.id === focusedNodeId ? { ...n, parentId: null } : n))
+      : storeNodes
+    const updates = computeTreeLayout(subset)
     const byId = new Map(updates.map((u) => [u.id, u.position]))
     // Apply immediately (overriding any local drag positions), persist, recenter.
-    setNodes((prev) => prev.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n)))
+    setNodes((prev) =>
+      prev.map((n) => {
+        if (n.id === COLLAPSED_ID) {
+          const fp = focusedNodeId ? byId.get(focusedNodeId) : undefined
+          return fp ? { ...n, position: { x: fp.x, y: fp.y - 150 } } : n
+        }
+        return byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n
+      })
+    )
     setNodePositions(updates)
     setTimeout(() => rfRef.current?.fitView({ padding: 0.3, duration: 400 }), 60)
-  }, [storeNodes, setNodes, setNodePositions])
+  }, [storeNodes, focusedNodeId, setNodes, setNodePositions])
 
   return (
     <ReactFlow
@@ -102,6 +166,10 @@ export function FlowCanvas() {
       onNodeDragStop={onNodeDragStop}
       onPaneClick={() => selectNode(null)}
       onInit={(inst) => (rfRef.current = inst)}
+      // Node deletion goes through the inspector's Trash button (→ store). The
+      // default Backspace/Delete keys only mutate local RF state, desyncing the
+      // store and orphaning the synthetic collapsed node — so disable them.
+      deleteKeyCode={null}
       fitView
       fitViewOptions={{ padding: 0.35, maxZoom: 1 }}
       minZoom={0.2}

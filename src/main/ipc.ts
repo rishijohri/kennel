@@ -44,6 +44,15 @@ import {
   updateWorkflowNode
 } from './services/parks'
 import { cancelWorkflow, runWorkflow } from './agent/workflow-runner'
+import { HF_ROUTER_URL } from './agent/provider-runner'
+import {
+  cancelCopilotSetup,
+  getCopilotStatus,
+  installCopilot,
+  loginCopilot
+} from './services/copilot-cli'
+import { sendCopilotSetup } from './services/broadcast'
+import { getNodeActivity } from './services/activity-log'
 import { discardParkRuns, workspaceFile, workspaceTree } from './services/workflow-workspace'
 import { deleteCanvasNode } from './services/node-ops'
 import { dropMcpConnection, testMcpServer } from './services/mcp'
@@ -88,6 +97,21 @@ async function listProviderModels(
   apiKey: string
 ): Promise<{ ok: boolean; message: string; models?: string[] }> {
   try {
+    if (provider.kind === 'copilot') {
+      // Keyless: "testing" = probe the CLI's readiness + offered models.
+      const status = await getCopilotStatus()
+      if (!status.installed) {
+        return { ok: false, message: 'GitHub Copilot CLI is not installed. Use “Install CLI”.' }
+      }
+      if (!status.signedIn) {
+        return { ok: false, message: `${status.version ?? 'Copilot CLI'} installed — not signed in. Use “Sign in”.` }
+      }
+      return {
+        ok: true,
+        message: `${status.version ?? 'GitHub Copilot CLI'}${status.login ? ` · signed in as ${status.login}` : ' · signed in'}.`,
+        models: status.models
+      }
+    }
     if (provider.kind === 'anthropic') {
       const client = new Anthropic({ apiKey })
       const res = await client.models.list({ limit: 50 })
@@ -126,15 +150,20 @@ async function listProviderModels(
         return { ok: true, message: label, models: [] }
       }
     }
-    const client = new OpenAI({ apiKey: apiKey || 'not-needed', baseURL: provider.baseUrl })
+    // openai + openai-compatible + huggingface — all OpenAI-compatible. HF uses the
+    // unified router (token-authed); the rest use the configured baseUrl (or OpenAI).
+    const baseURL = provider.kind === 'huggingface' ? HF_ROUTER_URL : provider.baseUrl
+    const client = new OpenAI({ apiKey: apiKey || 'not-needed', baseURL })
     const res = await client.models.list()
     const models = res.data.map((m) => m.id).slice(0, 100)
     return {
       ok: true,
       message:
-        provider.kind === 'openai-compatible'
-          ? `Connected to ${provider.baseUrl}.`
-          : 'Connected to OpenAI.',
+        provider.kind === 'huggingface'
+          ? 'Connected to Hugging Face Inference.'
+          : provider.kind === 'openai-compatible'
+            ? `Connected to ${provider.baseUrl}.`
+            : 'Connected to OpenAI.',
       models
     }
   } catch (err: any) {
@@ -206,6 +235,12 @@ export function registerIpc(): void {
     }
     return res
   })
+
+  // ── GitHub Copilot CLI (keyless provider setup) ───────────────────────────
+  ipcMain.handle('kennel:getCopilotStatus', () => getCopilotStatus())
+  ipcMain.handle('kennel:installCopilot', () => installCopilot(sendCopilotSetup))
+  ipcMain.handle('kennel:loginCopilot', () => loginCopilot(sendCopilotSetup))
+  ipcMain.handle('kennel:cancelCopilotSetup', () => cancelCopilotSetup())
 
   // ── Personas (library + per-project membership) ───────────────────────────
   ipcMain.handle('kennel:savePersona', (_e, persona: AgentPersona) => {
@@ -486,6 +521,13 @@ export function registerIpc(): void {
     return s
   })
 
+  ipcMain.handle('kennel:setFocusedNode', (_e, nodeId: string | null) => {
+    store.setFocusedNode(nodeId)
+    const s = store.getState()
+    sendState(s)
+    return s
+  })
+
   ipcMain.handle(
     'kennel:updateNodePosition',
     (_e, nodeId: string, position: { x: number; y: number }) => {
@@ -583,7 +625,7 @@ export function registerIpc(): void {
   ipcMain.handle('kennel:deleteNode', async (_e, nodeId: string) => {
     // A delete may re-checkout the working tree; never do that during a run.
     if (isBusy()) throw new Error('Cannot delete a node while a run is in progress.')
-    await deleteCanvasNode(nodeId)
+    await deleteCanvasNode(nodeId) // also drops the deleted subtree's activity logs
     const s = store.getState()
     sendState(s)
     return s
@@ -619,6 +661,10 @@ export function registerIpc(): void {
     if (!project || !node) return ''
     return showFile(project.path, node.commit, relPath)
   })
+
+  // A node's persisted activity log (its latest run's streamed events) — used by
+  // the Log view to show history after a restart, when nothing is in memory.
+  ipcMain.handle('kennel:getNodeActivity', (_e, nodeId: string) => getNodeActivity(nodeId))
 
   ipcMain.handle('kennel:getNodeChanges', async (_e, nodeId: string) => {
     const project = store.getProject()

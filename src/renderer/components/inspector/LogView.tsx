@@ -36,7 +36,14 @@ function toolSummary(tool: string, input: any): string {
 export function LogView({ nodeId, isRunning }: { nodeId: string; isRunning: boolean }) {
   const logs = useKennel((s) => s.logs[nodeId]) ?? EMPTY_LOG
   const cancelRun = useKennel((s) => s.cancelRun)
+  const loadNodeActivity = useKennel((s) => s.loadNodeActivity)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // After a restart the in-memory log is empty — rehydrate it from disk. Skips
+  // automatically if a run is live or logs are already present (no clobber).
+  useEffect(() => {
+    if (!isRunning) void loadNodeActivity(nodeId)
+  }, [nodeId, isRunning, loadNodeActivity])
 
   useEffect(() => {
     const el = scrollRef.current

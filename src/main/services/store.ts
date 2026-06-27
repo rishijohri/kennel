@@ -1058,6 +1058,17 @@ class Store {
     }
   }
 
+  /** Focus the canvas on a node's subtree (collapse everything else), or clear it
+   *  with null. Only a real non-root node can be focused; anything else clears. */
+  setFocusedNode(nodeId: string | null) {
+    const rec = this.activeRecord()
+    if (!rec) return
+    const node = nodeId ? this.getNode(nodeId) : undefined
+    const focusedNodeId = node && node.kind !== 'root' ? nodeId : null
+    rec.project = { ...rec.project, focusedNodeId }
+    this.persistState()
+  }
+
   getNodes(): CanvasNode[] {
     return this.activeRecord()?.nodes ?? []
   }

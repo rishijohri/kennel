@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import type {
   CaretakerEvent,
+  CopilotSetupEvent,
   DownloadProgress,
   KennelState,
   LocalServerStatus,
@@ -47,4 +48,8 @@ export function sendDownloadProgress(p: DownloadProgress): void {
 
 export function sendUpdateEvent(s: UpdateState): void {
   send('kennel:update-event', s)
+}
+
+export function sendCopilotSetup(e: CopilotSetupEvent): void {
+  send('kennel:copilot-setup', e)
 }

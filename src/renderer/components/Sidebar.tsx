@@ -31,7 +31,12 @@ import type { AgentPersona, DeterministicProcess, ProviderConfig } from '@shared
 const MIN_W = 220
 const MAX_W = 460
 const DEFAULT_W = 256
+/** Width of the icons-only rail, and the drag threshold below which we snap to it. */
+const RAIL_W = 64
+const COLLAPSE_AT = 170
 const WIDTH_KEY = 'kennel.sidebarWidth'
+
+const isValidWidth = (w: number) => w === RAIL_W || (w >= MIN_W && w <= MAX_W)
 
 export function Sidebar() {
   const allPersonas = useKennel((s) => s.state?.personas ?? [])
@@ -75,18 +80,25 @@ export function Sidebar() {
 
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(window.localStorage.getItem(WIDTH_KEY))
-    return Number.isFinite(saved) && saved >= MIN_W && saved <= MAX_W ? saved : DEFAULT_W
+    return Number.isFinite(saved) && isValidWidth(saved) ? saved : DEFAULT_W
   })
   useEffect(() => {
     window.localStorage.setItem(WIDTH_KEY, String(width))
   }, [width])
 
+  // Below COLLAPSE_AT the sidebar snaps to a compact icons-only rail.
+  const collapsed = width <= RAIL_W
+
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
+    // Anchor to the actual current width (even the 64px rail) so the panel edge
+    // tracks the cursor as you drag the rail back open, snapping to the rail only
+    // once the cursor drops below the threshold.
     const startW = width
     const onMove = (ev: MouseEvent) => {
-      setWidth(Math.min(MAX_W, Math.max(MIN_W, startW + (ev.clientX - startX))))
+      const next = startW + (ev.clientX - startX)
+      setWidth(next < COLLAPSE_AT ? RAIL_W : Math.min(MAX_W, Math.max(MIN_W, next)))
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
@@ -105,6 +117,84 @@ export function Sidebar() {
       style={{ width }}
       className="relative flex shrink-0 flex-col border-r border-line/70 bg-surface/40"
     >
+      {collapsed ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden py-3">
+          <RailImgBtn src={walkerIcon} title="Walker — run a task across the canvas" onClick={openWalker} ring="mint" />
+          <RailImgBtn src={caretakerIcon} title="Care Taker — set up agents & processes" onClick={openCaretaker} ring="iris" />
+          <RailDivider />
+          <RailToggle active={tab === 'personas'} onClick={() => setTab('personas')} title={inPark ? 'Park Personas' : 'Personas'}>
+            <Sparkles size={17} />
+          </RailToggle>
+          <RailToggle
+            active={tab === 'deterministic'}
+            onClick={() => setTab('deterministic')}
+            title={inPark ? 'Park Processes' : 'Processes'}
+          >
+            <SquareTerminal size={17} />
+          </RailToggle>
+          {inPark && (
+            <RailBtn
+              title={shareParkCaps ? 'Shared across Parks — click to isolate' : 'Isolated to this Park — click to share'}
+              onClick={() => void setShareParkCapabilities(!shareParkCaps)}
+            >
+              {shareParkCaps ? <Share2 size={16} className="text-iris-soft" /> : <Lock size={16} />}
+            </RailBtn>
+          )}
+          <RailBtn
+            title={inPark ? `Add a Park ${tab === 'personas' ? 'persona' : 'process'}` : 'Add'}
+            onClick={() =>
+              tab === 'personas'
+                ? inPark
+                  ? setCreatingPersona(true)
+                  : openSettings('personas')
+                : setEditingProcess('new')
+            }
+          >
+            <Plus size={17} />
+          </RailBtn>
+          <RailDivider />
+          {tab === 'personas'
+            ? personas.map((p) => (
+                <RailAvatar
+                  key={p.id}
+                  emoji={p.emoji}
+                  color={p.color}
+                  title={p.name}
+                  usage={personaUsage(p)}
+                  onClick={() => setEditingPersona(p)}
+                />
+              ))
+            : processes.map((p) => (
+                <RailAvatar
+                  key={p.id}
+                  emoji={p.emoji}
+                  color={p.color}
+                  title={p.name}
+                  usage={processUsage(p)}
+                  onClick={() => setEditingProcess(p.id)}
+                />
+              ))}
+          <div className="min-h-2 flex-1" />
+          <RailDivider />
+          <RailBtn title="AI Providers" onClick={() => openSettings('providers')}>
+            <Server size={17} />
+          </RailBtn>
+          <RailBtn
+            title="Local Models"
+            onClick={() => openSettings('local')}
+            dot={localStatus?.running ? 'mint' : localStatus?.starting ? 'amber' : undefined}
+            pulse={Boolean(localStatus?.starting)}
+          >
+            <Cpu size={17} />
+          </RailBtn>
+          {project && (
+            <RailBtn title={`Close “${project.name}”`} onClick={closeProject}>
+              <X size={16} />
+            </RailBtn>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Project agents */}
       <div className="space-y-2 p-3">
         <button
@@ -272,6 +362,8 @@ export function Sidebar() {
           </button>
         )}
       </div>
+        </>
+      )}
 
       <ProcessEditor
         open={editingProcess !== null}
@@ -289,12 +381,14 @@ export function Sidebar() {
         onClose={() => setCreatingPersona(false)}
       />
 
-      {/* Drag handle — sits on the panel's right edge to resize it. */}
+      {/* Drag handle — sits on the panel's right edge to resize it. A wider grab
+          zone (vs the thin visible line) makes it easy to grab, especially to drag
+          the narrow icons-only rail back open. Double-click resets to the default. */}
       <div
         onMouseDown={startResize}
         onDoubleClick={() => setWidth(DEFAULT_W)}
-        title="Drag to resize · double-click to reset"
-        className="no-drag group absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize"
+        title={collapsed ? 'Drag right to expand · double-click to reset' : 'Drag to resize · double-click to reset'}
+        className="no-drag group absolute right-0 top-0 z-20 h-full w-2.5 cursor-col-resize"
       >
         <span className="absolute inset-y-0 right-0 w-px bg-transparent transition-colors group-hover:bg-iris/60" />
       </div>
@@ -528,4 +622,127 @@ function Perm({ on, icon, label }: { on: boolean; icon: React.ReactNode; label: 
       {icon}
     </span>
   )
+}
+
+// ── Collapsed icons-only rail ───────────────────────────────────────────────
+
+function RailBtn({
+  title,
+  onClick,
+  children,
+  dot,
+  pulse
+}: {
+  title: string
+  onClick: () => void
+  children: React.ReactNode
+  dot?: 'mint' | 'amber'
+  pulse?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="no-drag relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+    >
+      {children}
+      {dot && (
+        <span
+          className={clsx(
+            'absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-surface',
+            dot === 'mint' ? 'bg-mint' : 'bg-amber',
+            pulse && 'animate-pulse'
+          )}
+        />
+      )}
+    </button>
+  )
+}
+
+function RailToggle({
+  active,
+  onClick,
+  title,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={clsx(
+        'no-drag flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors',
+        active ? 'border-iris/50 bg-iris/10 text-ink' : 'border-line bg-surface text-ink-faint hover:text-ink-soft'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+function RailImgBtn({
+  src,
+  title,
+  onClick,
+  ring
+}: {
+  src: string
+  title: string
+  onClick: () => void
+  ring: 'mint' | 'iris'
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={clsx(
+        'no-drag flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br to-transparent transition-colors',
+        ring === 'mint' ? 'border-mint/40 from-mint/12 hover:border-mint/70' : 'border-iris/40 from-iris/12 hover:border-iris/70'
+      )}
+    >
+      <img src={src} alt="" className="h-7 w-7 rounded-lg object-cover" />
+    </button>
+  )
+}
+
+function RailAvatar({
+  emoji,
+  color,
+  title,
+  usage,
+  onClick
+}: {
+  emoji: string
+  color: string
+  title: string
+  usage: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={`${title}${usage > 0 ? ` · ${usage} node${usage === 1 ? '' : 's'}` : ''}`}
+      aria-label={title}
+      className="no-drag relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg transition-transform hover:scale-105"
+      style={{ background: `${color}1f`, boxShadow: `inset 0 0 0 1px ${color}55` }}
+    >
+      {emoji}
+      {usage > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-iris px-1 text-[9px] font-semibold text-white ring-2 ring-surface">
+          {usage}
+        </span>
+      )}
+    </button>
+  )
+}
+
+function RailDivider() {
+  return <span className="my-0.5 h-px w-7 shrink-0 bg-line/70" />
 }
